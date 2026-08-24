@@ -31,8 +31,7 @@ preparado para evolução.
    de dados.
 9. Não serão usados Socket.IO, Express, Axios, Redux, MongoDB, Redis ou
    filas enquanto os requisitos não justificarem essas dependências.
-10. A execução terá duração de uma semana e as atividades serão acompanhadas
-    exclusivamente pelo Kanban do projeto.
+10. As atividades serão acompanhadas exclusivamente pelo Kanban do projeto.
 
 ## Atualização em tempo real
 

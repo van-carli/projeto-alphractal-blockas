@@ -352,8 +352,7 @@ como Redis/PubSub. Essa infraestrutura não faz parte do MVP.
 
 O MVP não precisa de banco de dados. O dashboard consome o snapshot atual e uma
 janela curta de histórico, ambos mantidos pelo `SnapshotStore` em memória. Essa
-decisão reduz configuração, dependências e modos de falha durante a execução de
-uma semana.
+decisão reduz configuração, dependências e modos de falha.
 
 Consequências aceitas:
 
@@ -411,9 +410,8 @@ Express, ORM ou MongoDB no MVP.
 
 ## 17. Gestão do trabalho
 
-O prazo de execução é de uma semana. Atividades, prioridades, responsáveis e
-status serão mantidos exclusivamente no Kanban do projeto, sem duplicação em um
-documento de planejamento.
+Atividades, prioridades, responsáveis e status serão mantidos exclusivamente no
+Kanban do projeto, sem duplicação em um documento de planejamento.
 
 ## 18. Referências
 

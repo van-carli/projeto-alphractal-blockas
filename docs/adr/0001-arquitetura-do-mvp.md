@@ -8,8 +8,8 @@
 
 O projeto precisa ingerir continuamente dados da Ethereum, acompanhar indicadores
 relacionados à mempool, converter taxas em USD e atualizar um dashboard sem reload.
-O prazo é de uma semana e a entrega é uma prova de conceito isolada, somente
-leitura e sem implantação de contratos.
+A solução é uma prova de conceito isolada, somente leitura e sem implantação de
+contratos.
 
 As escolhas precisam minimizar infraestrutura sem impedir que ingestão, cálculo,
 entrega e apresentação sejam testados separadamente.
@@ -71,9 +71,9 @@ dependência sem atender a um requisito atual.
 
 ### 8. Gestão por Kanban
 
-O trabalho de uma semana será organizado exclusivamente no Kanban do projeto. O
-repositório registra decisões arquiteturais, mas não mantém um plano de execução
-paralelo ao quadro.
+O trabalho será organizado exclusivamente no Kanban do projeto. O repositório
+registra decisões arquiteturais, mas não mantém um plano de execução paralelo ao
+quadro.
 
 ## Consequências positivas
 
