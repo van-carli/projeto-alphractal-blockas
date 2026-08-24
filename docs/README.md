@@ -11,9 +11,7 @@ preparado para evolução.
 ## Documentos
 
 - [Arquitetura](arquitetura.md): módulos, interfaces, fluxo de dados, endpoints,
-  bibliotecas, atualização do dashboard e implantação.
-- [ADR 0001](adr/0001-arquitetura-do-mvp.md): registro das principais decisões e
-  alternativas consideradas.
+  persistência, bibliotecas, atualização do dashboard e implantação.
 
 ## Decisões principais
 
@@ -27,9 +25,9 @@ preparado para evolução.
    SSE.
 7. O TanStack Query armazenará o estado remoto no navegador; eventos completos
    usarão `setQueryData`, evitando uma segunda requisição a cada atualização.
-8. Snapshot e histórico recente ficarão em memória; o MVP não precisa de banco
-   de dados.
-9. Não serão usados Socket.IO, Express, Axios, Redux, MongoDB, Redis ou
+8. O PostgreSQL persistirá snapshots e histórico em uma única tabela, sem
+   autenticação de usuários na aplicação.
+9. Não serão usados Socket.IO, Express, Axios, Redux, MongoDB, Redis, ORM ou
    filas enquanto os requisitos não justificarem essas dependências.
 10. As atividades serão acompanhadas exclusivamente pelo Kanban do projeto.
 

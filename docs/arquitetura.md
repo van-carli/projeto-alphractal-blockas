@@ -23,8 +23,9 @@ flowchart LR
     VIEM --> TELEMETRY[FeeTelemetry]
     PRICEADAPTER --> TELEMETRY
     TELEMETRY --> CALC[FeeCalculator]
-    CALC --> STORE[SnapshotStore]
+    CALC --> STORE[SnapshotRepository]
     CALC --> HUB[SseHub]
+    STORE -->|SQL| POSTGRES[(PostgreSQL)]
 
     STORE --> SNAPSHOT[GET /api/fees/snapshot]
     STORE --> HISTORY[GET /api/fees/history]
@@ -45,8 +46,7 @@ flowchart LR
 4. `HttpPriceAdapter` consulta ETH/USD por HTTP a cada 30 segundos.
 5. `FeeCalculator` combina taxas, atividade observada e preço em um
    `FeeSnapshot`.
-6. `SnapshotStore` substitui o snapshot atual e adiciona um ponto ao histórico
-   circular.
+6. `SnapshotRepository` persiste o snapshot consolidado no PostgreSQL.
 7. `SseHub` envia o snapshot aos navegadores conectados.
 8. O hook de SSE do frontend valida o evento e usa `queryClient.setQueryData`.
 9. React renderiza novamente apenas os elementos afetados.
@@ -66,7 +66,6 @@ export interface FeeTelemetry {
   start(): Promise<void>
   stop(): Promise<void>
   getSnapshot(): FeeSnapshot | null
-  getHistory(): readonly FeeSnapshot[]
   getHealth(): TelemetryHealth
   subscribe(listener: (snapshot: FeeSnapshot) => void): () => void
 }
@@ -79,13 +78,29 @@ dentro dele:
 export type FeeTelemetryDependencies = {
   rpc: EthereumTelemetrySource
   price: EthUsdPriceSource
-  store: SnapshotStore
+  snapshots: SnapshotRepository
   clock: Clock
 }
 ```
 
-Isso cria seams testáveis para o RPC e para o provedor de preço. Produção usa
-adapters reais; testes usam adapters determinísticos em memória.
+O repositório expõe uma interface pequena e assíncrona:
+
+```ts
+export interface SnapshotRepository {
+  save(snapshot: FeeSnapshot): Promise<void>
+  getLatest(chainId: number): Promise<FeeSnapshot | null>
+  getHistory(query: {
+    chainId: number
+    from?: Date
+    to?: Date
+    limit: number
+  }): Promise<readonly FeeSnapshot[]>
+}
+```
+
+Isso cria seams testáveis para RPC, preço e persistência. Produção usa
+`PostgresSnapshotAdapter`; testes usam adapters determinísticos em memória. O
+domínio não conhece SQL, driver ou formato de armazenamento.
 
 ## 5. Responsabilidades dos módulos
 
@@ -95,7 +110,8 @@ adapters reais; testes usam adapters determinísticos em memória.
 | `ViemRpcAdapter` | WebSocket RPC, assinatura de blocos, mempool e reconexão |
 | `HttpPriceAdapter` | Polling HTTP, timeout, validação e último preço válido |
 | `FeeCalculator` | Cálculo puro de percentis, custo e congestionamento |
-| `SnapshotStore` | Snapshot atual e histórico circular limitado |
+| `SnapshotRepository` | Interface de persistência de snapshot e histórico |
+| `PostgresSnapshotAdapter` | Implementação SQL da interface em uma única tabela |
 | `SseHub` | Fan-out dos eventos e remoção de assinantes desconectados |
 | Route Handlers | Adaptar HTTP/SSE para a interface de `FeeTelemetry` |
 | Hooks do frontend | Carregar estado inicial e aplicar eventos ao cache local |
@@ -152,6 +168,7 @@ O adapter valida a resposta com Zod antes de atualizar o estado.
 export type FeeSnapshot = {
   sequence: number
   timestamp: string
+  chainId: number
   blockNumber: string
   blockHash: `0x${string}`
 
@@ -181,7 +198,8 @@ export type FeeSnapshot = {
 }
 ```
 
-`blockNumber` é uma string porque `bigint` não é serializado por JSON. Valores
+`chainId` identifica a rede sem exigir uma tabela de redes. `blockNumber` é uma
+string porque `bigint` não é serializado por JSON. Valores
 on-chain permanecem como `bigint` durante o cálculo e são formatados apenas na
 saída.
 
@@ -221,8 +239,9 @@ fallback quando o stream estiver indisponível.
 
 ### `GET /api/fees/history`
 
-Retorna a janela disponível no `SnapshotStore`. O histórico é limitado por
-`HISTORY_MAX_POINTS` e não sobrevive ao reinício do processo no MVP.
+Consulta a janela persistida no PostgreSQL. Aceita limites e intervalo de tempo
+validados; a resposta aplica `HISTORY_MAX_POINTS` para evitar consultas e
+payloads sem limite.
 
 ### `GET /api/fees/stream`
 
@@ -323,7 +342,7 @@ polling de preço e fecha os streams SSE.
 - substituição do último bloco quando houver reorganização;
 - último preço válido preservado durante falha temporária;
 - status degradado quando RPC ou preço estiverem atrasados;
-- histórico circular para limitar memória;
+- escrita idempotente e consulta paginada para limitar uso do PostgreSQL;
 - heartbeat SSE e limpeza de conexões fechadas;
 - logs estruturados sem URLs completas, chaves ou payloads sensíveis.
 
@@ -344,41 +363,83 @@ N conexões SSE
 ```
 
 Se o sistema passar a usar múltiplas réplicas, cada processo teria seu próprio
-WebSocket, histórico e conjunto de clientes. Nesse momento, a ingestão deve ser
+WebSocket e conjunto de clientes, embora compartilhe o histórico no PostgreSQL.
+Nesse momento, a ingestão deve ser
 extraída para um worker persistente ou coordenada por um mecanismo compartilhado,
 como Redis/PubSub. Essa infraestrutura não faz parte do MVP.
 
 ## 14. Persistência e banco de dados
 
-O MVP não precisa de banco de dados. O dashboard consome o snapshot atual e uma
-janela curta de histórico, ambos mantidos pelo `SnapshotStore` em memória. Essa
-decisão reduz configuração, dependências e modos de falha.
+O PostgreSQL é a única base persistente da aplicação. Ele preserva o histórico
+entre reinícios, permite filtrar períodos e facilita agregações temporais com
+SQL. MongoDB não será usado porque os snapshots têm contrato estável, relações
+simples e consultas previsíveis por rede e tempo.
 
-Consequências aceitas:
+### 14.1 Modelo mínimo
 
-- o histórico é perdido quando o processo reinicia;
-- não há consulta de períodos anteriores à inicialização atual;
-- uma única instância é a fonte do estado exibido.
+Uma tabela é suficiente. Perfis de operação e limites de congestionamento ficam
+versionados no código; não exigem tabelas próprias. Os custos estimados são
+gravados em `jsonb` porque são um resultado autocontido do snapshot e não
+precisam de joins.
 
-MongoDB não oferece uma vantagem clara para esse escopo e não será adicionado.
-Ele pode ser avaliado futuramente caso surja necessidade de retenção durável e a
-equipe prefira documentos ou coleções de séries temporais. Para análise histórica
-estruturada, agregações por intervalo e consultas analíticas, também deverão ser
-comparadas alternativas relacionais e especializadas em séries temporais. A
-escolha futura deve partir dos requisitos de retenção e consulta, não apenas da
-tecnologia já conhecida pela equipe.
+```sql
+CREATE TABLE fee_snapshots (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  observed_at timestamptz NOT NULL,
+  chain_id bigint NOT NULL,
+  block_number bigint NOT NULL,
+  block_hash varchar(66) NOT NULL,
+  base_fee_gwei numeric(20, 9) NOT NULL,
+  slow_fee_gwei numeric(20, 9) NOT NULL,
+  standard_fee_gwei numeric(20, 9) NOT NULL,
+  fast_fee_gwei numeric(20, 9) NOT NULL,
+  eth_usd numeric(20, 8) NOT NULL,
+  pending_tx_per_second numeric(20, 4),
+  gas_used_ratio numeric(10, 6) NOT NULL,
+  congestion_level text NOT NULL CHECK (
+    congestion_level IN ('low', 'normal', 'high', 'critical')
+  ),
+  estimated_costs jsonb NOT NULL DEFAULT '[]'::jsonb,
+  extra jsonb NOT NULL DEFAULT '{}'::jsonb,
+  UNIQUE (chain_id, block_hash)
+);
 
-Adicionar persistência somente quando existir pelo menos um destes requisitos:
+CREATE INDEX fee_snapshots_chain_time_idx
+  ON fee_snapshots (chain_id, observed_at DESC);
+```
 
-- histórico deve sobreviver a reinícios;
-- comparação entre dias ou períodos longos;
-- auditoria ou reprodução de snapshots;
-- múltiplas instâncias precisam compartilhar estado;
-- exportação ou análise histórica pela Alphractal.
+A restrição única torna a gravação idempotente quando o provedor reenviar o
+mesmo bloco. Reorganizações são identificadas por `chain_id`, `block_number` e
+`block_hash`; o snapshot canônico mais recente é determinado pelo estado
+observado pelo `FeeTelemetry`.
+
+### 14.2 Política de gravação e retenção
+
+- persistir um snapshot consolidado por novo bloco;
+- manter atualizações de mempool entre blocos somente no estado vivo e no SSE;
+- usar transação curta e parâmetros SQL, nunca interpolação de strings;
+- limitar toda consulta de histórico;
+- definir retenção por configuração e executar a limpeza em um job simples;
+- manter o último snapshot em memória para fan-out SSE e resposta imediata,
+  usando o PostgreSQL como fonte durável do histórico.
+
+### 14.3 Sem autenticação de usuários
+
+O dashboard é somente leitura e não mantém contas, preferências ou dados
+pessoais. Portanto, não existem tabelas de usuários, sessões, organizações ou
+permissões. A ausência de autenticação de usuários não significa expor o banco:
+
+- apenas o backend acessa o PostgreSQL pela variável `DATABASE_URL`;
+- o banco não é acessível diretamente pelo navegador;
+- a credencial usa um usuário de aplicação com permissões mínimas;
+- endpoints de telemetria aplicam validação, limites e rate limiting no proxy;
+- segredos não recebem o prefixo `NEXT_PUBLIC_`.
 
 ## 15. Segurança
 
 - chaves RPC e de preço ficam apenas em variáveis de ambiente do servidor;
+- `DATABASE_URL` fica apenas no runtime do servidor;
+- o usuário do PostgreSQL recebe somente as permissões necessárias;
 - nenhuma chave recebe o prefixo `NEXT_PUBLIC_`;
 - o código não contém carteira, chave privada ou método de envio de transação;
 - respostas e logs não incluem a URL RPC autenticada;
@@ -395,6 +456,7 @@ Dependências de execução:
 | `viem` | Cliente Ethereum e transporte WebSocket JSON-RPC |
 | `@tanstack/react-query` | Estado remoto e cache no navegador |
 | `zod` | Validação de ambiente, preço HTTP e eventos SSE |
+| `postgres` | Driver PostgreSQL e consultas SQL parametrizadas |
 | `recharts` | Gráficos responsivos do dashboard |
 | `tailwindcss` | Layout e identidade visual |
 
@@ -406,7 +468,8 @@ Ferramentas de teste previstas:
 - `@playwright/test` para o fluxo completo no navegador.
 
 Não são necessárias dependências para Socket.IO, WebSocket manual, Axios,
-Express, ORM ou MongoDB no MVP.
+Express, ORM, MongoDB ou autenticação de usuários no MVP. Migrações são arquivos
+SQL versionados e executados pelo comando de migração do projeto.
 
 ## 17. Gestão do trabalho
 
