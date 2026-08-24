@@ -1,7 +1,7 @@
 # Documentação do projeto
 
-Esta pasta registra a arquitetura e o planejamento do protótipo de monitoramento
-em tempo quase real de taxas da rede Ethereum para a área *Fees* da Alphractal.
+Esta pasta registra a arquitetura do protótipo de monitoramento em tempo real de
+taxas da rede Ethereum para a área *Fees* da Alphractal.
 
 O escopo foi derivado do
 [TAP do projeto](https://github.com/InteliBlockchain-IBC/projeto-alphractal/blob/main/docs/TAP-Alphractal.pdf)
@@ -11,9 +11,7 @@ preparado para evolução.
 ## Documentos
 
 - [Arquitetura](arquitetura.md): módulos, interfaces, fluxo de dados, endpoints,
-  atualização do dashboard e implantação.
-- [Plano de desenvolvimento](plano-de-desenvolvimento.md): bibliotecas,
-  configuração, organização do código, etapas e estratégia de testes.
+  bibliotecas, atualização do dashboard e implantação.
 - [ADR 0001](adr/0001-arquitetura-do-mvp.md): registro das principais decisões e
   alternativas consideradas.
 
@@ -29,13 +27,16 @@ preparado para evolução.
    SSE.
 7. O TanStack Query armazenará o estado remoto no navegador; eventos completos
    usarão `setQueryData`, evitando uma segunda requisição a cada atualização.
-8. Snapshot e histórico recente ficarão em memória no MVP.
-9. Não serão usados Socket.IO, Express, Axios, Redux, banco de dados, Redis ou
+8. Snapshot e histórico recente ficarão em memória; o MVP não precisa de banco
+   de dados.
+9. Não serão usados Socket.IO, Express, Axios, Redux, MongoDB, Redis ou
    filas enquanto os requisitos não justificarem essas dependências.
+10. A execução terá duração de uma semana e as atividades serão acompanhadas
+    exclusivamente pelo Kanban do projeto.
 
-## Significado de "tempo real"
+## Atualização em tempo real
 
-O dashboard será atualizado em **tempo quase real**:
+O dashboard será atualizado em tempo real:
 
 - blocos: assim que o provedor RPC emitir um novo cabeçalho, normalmente no
   ritmo de produção de blocos da Ethereum;
@@ -44,6 +45,5 @@ O dashboard será atualizado em **tempo quase real**:
 - ETH/USD: atualização por HTTP a cada 30 segundos;
 - saúde das conexões: atualização quando o estado mudar.
 
-Esse comportamento evita polling no frontend. A pequena latência entre a origem,
-o servidor e o navegador impede que o sistema seja classificado como tempo real
-duro, mas atende ao objetivo operacional do painel.
+O acompanhamento das entregas, responsáveis e prioridades permanece no Kanban;
+não há um documento separado de planejamento no repositório.

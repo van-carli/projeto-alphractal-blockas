@@ -348,7 +348,36 @@ WebSocket, histórico e conjunto de clientes. Nesse momento, a ingestão deve se
 extraída para um worker persistente ou coordenada por um mecanismo compartilhado,
 como Redis/PubSub. Essa infraestrutura não faz parte do MVP.
 
-## 14. Segurança
+## 14. Persistência e banco de dados
+
+O MVP não precisa de banco de dados. O dashboard consome o snapshot atual e uma
+janela curta de histórico, ambos mantidos pelo `SnapshotStore` em memória. Essa
+decisão reduz configuração, dependências e modos de falha durante a execução de
+uma semana.
+
+Consequências aceitas:
+
+- o histórico é perdido quando o processo reinicia;
+- não há consulta de períodos anteriores à inicialização atual;
+- uma única instância é a fonte do estado exibido.
+
+MongoDB não oferece uma vantagem clara para esse escopo e não será adicionado.
+Ele pode ser avaliado futuramente caso surja necessidade de retenção durável e a
+equipe prefira documentos ou coleções de séries temporais. Para análise histórica
+estruturada, agregações por intervalo e consultas analíticas, também deverão ser
+comparadas alternativas relacionais e especializadas em séries temporais. A
+escolha futura deve partir dos requisitos de retenção e consulta, não apenas da
+tecnologia já conhecida pela equipe.
+
+Adicionar persistência somente quando existir pelo menos um destes requisitos:
+
+- histórico deve sobreviver a reinícios;
+- comparação entre dias ou períodos longos;
+- auditoria ou reprodução de snapshots;
+- múltiplas instâncias precisam compartilhar estado;
+- exportação ou análise histórica pela Alphractal.
+
+## 15. Segurança
 
 - chaves RPC e de preço ficam apenas em variáveis de ambiente do servidor;
 - nenhuma chave recebe o prefixo `NEXT_PUBLIC_`;
@@ -357,7 +386,36 @@ como Redis/PubSub. Essa infraestrutura não faz parte do MVP.
 - dados externos são validados em runtime;
 - endpoints públicos retornam somente dados de telemetria necessários ao painel.
 
-## 15. Referências
+## 16. Stack e dependências
+
+Dependências de execução:
+
+| Pacote | Uso |
+| --- | --- |
+| `next`, `react`, `react-dom` | Aplicação, renderização e Route Handlers |
+| `viem` | Cliente Ethereum e transporte WebSocket JSON-RPC |
+| `@tanstack/react-query` | Estado remoto e cache no navegador |
+| `zod` | Validação de ambiente, preço HTTP e eventos SSE |
+| `recharts` | Gráficos responsivos do dashboard |
+| `tailwindcss` | Layout e identidade visual |
+
+Ferramentas de teste previstas:
+
+- `vitest` para cálculos, schemas, store e telemetria;
+- `@testing-library/react` e `@testing-library/jest-dom` para o frontend;
+- `msw` para simular a fonte HTTP de preço;
+- `@playwright/test` para o fluxo completo no navegador.
+
+Não são necessárias dependências para Socket.IO, WebSocket manual, Axios,
+Express, ORM ou MongoDB no MVP.
+
+## 17. Gestão do trabalho
+
+O prazo de execução é de uma semana. Atividades, prioridades, responsáveis e
+status serão mantidos exclusivamente no Kanban do projeto, sem duplicação em um
+documento de planejamento.
+
+## 18. Referências
 
 - [Next.js - Route Handlers](https://nextjs.org/docs/app/getting-started/route-handlers)
 - [Next.js - Instrumentation](https://nextjs.org/docs/app/guides/instrumentation)
