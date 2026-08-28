@@ -9,8 +9,7 @@ describe('parseServerEnv', () => {
   it('converte e valida uma configuração completa', () => {
     const env = parseServerEnv({
       NODE_ENV: 'test',
-      ETHEREUM_WS_RPC_URL: 'wss://ethereum.example.invalid/rpc',
-      DATABASE_URL: 'postgresql://app:secret@localhost:5432/alphractal',
+      ETHEREUM_WS_RPC_URL: 'wss://eth-mainnet.g.alchemy.com/v2/fake-key',
       ETH_USD_POLL_INTERVAL_MS: '45000',
       HISTORY_MAX_POINTS: '900',
     })
@@ -29,17 +28,14 @@ describe('parseServerEnv', () => {
   })
 
   it('não inclui valores de credenciais na mensagem de erro', () => {
-    expect.assertions(3)
-    const invalidDatabaseUrl = 'https://user:super-secret@example.com/database'
+    expect.assertions(2)
 
     try {
       parseServerEnv({
         ETHEREUM_WS_RPC_URL: 'https://rpc-secret.example.com',
-        DATABASE_URL: invalidDatabaseUrl,
       })
     } catch (error) {
       expect(error).toBeInstanceOf(InvalidServerEnvironmentError)
-      expect(String(error)).not.toContain('super-secret')
       expect(String(error)).not.toContain('rpc-secret')
     }
   })

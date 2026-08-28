@@ -14,20 +14,15 @@ const webSocketUrl = z.string().url().refine(
   { message: 'deve usar o protocolo ws: ou wss:' },
 )
 
-const postgresUrl = z.string().url().refine(
-  (value) => {
-    const protocol = new URL(value).protocol
-    return protocol === 'postgres:' || protocol === 'postgresql:'
-  },
-  { message: 'deve usar o protocolo postgres: ou postgresql:' },
-)
-
 export const ServerEnvSchema = z.object({
   NODE_ENV: z
     .enum(['development', 'test', 'production'])
     .default('development'),
+
+  // URL de WebSocket do provedor RPC (Alchemy).
+  // Ex: wss://eth-mainnet.g.alchemy.com/v2/<sua-api-key>
   ETHEREUM_WS_RPC_URL: webSocketUrl,
-  DATABASE_URL: postgresUrl,
+
   ETH_USD_API_URL: z
     .string()
     .url()
