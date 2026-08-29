@@ -1,15 +1,14 @@
-import type { FeeSnapshot } from "@/modules/fees";
+import type { FeeSnapshot } from "./fee-snapshot";
+import type {
+  SnapshotRepository,
+  SnapshotHistoryQuery,
+} from "../application/ports";
 
-/**
- * Guarda o estado das fees em memória: o snapshot mais recente
- * e um histórico limitado (fila circular), sem duplicar blocos.
- */
-export class InMemorySnapshotRepository {
-  private current: FeeSnapshot | null = null;
+export class InMemorySnapshotRepository implements SnapshotRepository {
   private history: FeeSnapshot[] = [];
+  private readonly latestByChain = new Map<number, FeeSnapshot>();
+  private readonly seenKeys = new Set<string>();
   private readonly maxHistorySize: number;
-
-  private readonly seenBlockNumbers = new Set<string>();
 
   constructor(maxHistorySize: number) {
     if (maxHistorySize <= 0) {
@@ -18,32 +17,52 @@ export class InMemorySnapshotRepository {
     this.maxHistorySize = maxHistorySize;
   }
 
-  save(snapshot: FeeSnapshot): void {
-    if (this.seenBlockNumbers.has(snapshot.blockNumber)) {
+  private keyFor(snapshot: FeeSnapshot): string {
+    return `${snapshot.chainId}:${snapshot.blockNumber}`;
+  }
+
+  async save(snapshot: FeeSnapshot): Promise<void> {
+    const key = this.keyFor(snapshot);
+    if (this.seenKeys.has(key)) {
       return;
     }
 
-    this.current = snapshot;
     this.history.push(snapshot);
-    this.seenBlockNumbers.add(snapshot.blockNumber);
+    this.seenKeys.add(key);
+    this.latestByChain.set(snapshot.chainId, snapshot);
 
     if (this.history.length > this.maxHistorySize) {
       const removed = this.history.shift();
       if (removed) {
-        this.seenBlockNumbers.delete(removed.blockNumber);
+        this.seenKeys.delete(this.keyFor(removed));
       }
     }
   }
 
-  getCurrent(): FeeSnapshot | null {
-    return this.current;
+  async getLatest(chainId: number): Promise<FeeSnapshot | null> {
+    return this.latestByChain.get(chainId) ?? null;
   }
 
-  getHistory(limit: number): FeeSnapshot[] {
-    if (limit <= 0) {
+  async getHistory(
+    query: SnapshotHistoryQuery
+  ): Promise<readonly FeeSnapshot[]> {
+    if (query.limit <= 0) {
       return [];
     }
-    return this.history.slice(-limit);
+
+    let items = this.history.filter((s) => s.chainId === query.chainId);
+
+    if (query.from) {
+      const fromTime = query.from.getTime();
+      items = items.filter((s) => new Date(s.timestamp).getTime() >= fromTime);
+    }
+
+    if (query.to) {
+      const toTime = query.to.getTime();
+      items = items.filter((s) => new Date(s.timestamp).getTime() <= toTime);
+    }
+
+    return items.slice(-query.limit);
   }
 
   size(): number {
