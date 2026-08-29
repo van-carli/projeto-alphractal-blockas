@@ -22,7 +22,7 @@ describe("FakePriorityFeeSource", () => {
     });
 
     source.setQuote({ slow: 5, standard: 15, fast: 25 });
-    const result = await source.getPriorityFeeGwei(101n);
+    const result = await source.getPriorityFeeGwei(100n);
 
     expect(result).toEqual({ slow: 5, standard: 15, fast: 25 });
   });

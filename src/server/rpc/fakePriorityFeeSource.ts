@@ -10,9 +10,9 @@ import type {
 export class FakePriorityFeeSource implements PriorityFeeSource {
   constructor(private quote: PriorityFeeGwei) {}
 
-  async getPriorityFeeGwei(): Promise<PriorityFeeGwei> {
-    return this.quote;
-  }
+async getPriorityFeeGwei(_blockNumber: bigint): Promise<PriorityFeeGwei> {    return this.quote;
+  
+}
 
   /** Permite trocar o valor devolvido em um teste específico. */
   setQuote(quote: PriorityFeeGwei): void {
