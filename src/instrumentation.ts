@@ -1,6 +1,8 @@
-export async function register() {
-  if (process.env.NEXT_RUNTIME !== 'nodejs') return
+import { bootstrapServer } from "./server/bootstrap";
 
-  const { bootstrapServer } = await import('./server/bootstrap')
-  await bootstrapServer()
+export async function register(): Promise<void> {
+  // só roda no lado do servidor, nunca no navegador
+  if (typeof window === "undefined") {
+    await bootstrapServer();
+  }
 }
