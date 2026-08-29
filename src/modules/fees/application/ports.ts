@@ -43,3 +43,13 @@ export interface SnapshotRepository {
 export interface Clock {
   now(): Date
 }
+
+export type PriorityFeeGwei = Readonly<{
+  slow: number
+  standard: number
+  fast: number
+}>
+
+export interface PriorityFeeSource {
+  getPriorityFeeGwei(blockNumber: bigint): Promise<PriorityFeeGwei>
+}

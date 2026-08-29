@@ -25,45 +25,34 @@ describe("calculateFeeTiers", () => {
   it("devolve slow, standard e fast em ordem crescente", () => {
     const fees = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50];
     const result = calculateFeeTiers(fees);
-
     expect(result.slow).toBeLessThan(result.standard);
     expect(result.standard).toBeLessThan(result.fast);
   });
 });
 
 describe("calculateCongestion", () => {
-  it("classifica como low quando o uso de gás é baixo", () => {
-    expect(calculateCongestion(0.3)).toBe("low");
-  });
-
-  it("classifica como normal quando o uso de gás é moderado", () => {
-    expect(calculateCongestion(0.6)).toBe("normal");
-  });
-
-  it("classifica como high quando o uso de gás está alto", () => {
-    expect(calculateCongestion(0.8)).toBe("high");
-  });
-
-  it("classifica como critical quando o bloco está quase cheio", () => {
-    expect(calculateCongestion(0.95)).toBe("critical");
-  });
+  it("classifica como low", () => expect(calculateCongestion(0.3)).toBe("low"));
+  it("classifica como normal", () => expect(calculateCongestion(0.6)).toBe("normal"));
+  it("classifica como high", () => expect(calculateCongestion(0.8)).toBe("high"));
+  it("classifica como critical", () => expect(calculateCongestion(0.95)).toBe("critical"));
 });
 
 describe("buildEstimatedCost", () => {
-  it("calcula os três custos em USD para uma operação", () => {
+  it("calcula custos somando baseFee + priorityFee", () => {
+    // baseFee 10 gwei + priority slow 5 = 15 gwei total
+    // 21000 * 15 * 1e-9 = 0.000315 ETH * 3000 USD = 0.95
     const result = buildEstimatedCost(
       "ETH transfer",
       21000,
-      { slow: 10, standard: 20, fast: 30 },
+      10,
+      { slow: 5, standard: 10, fast: 20 },
       3000
     );
 
     expect(result.operation).toBe("ETH transfer");
-    expect(result.gasUnits).toBe(21000);
-    // 21000 * 20 * 1e-9 ETH * 3000 USD = 1.26
+    expect(result.slowUsd).toBe(0.95);
     expect(result.standardUsd).toBe(1.26);
-    expect(result.fastUsd).toBeGreaterThan(result.standardUsd);
-    expect(result.slowUsd).toBeLessThan(result.standardUsd);
+    expect(result.fastUsd).toBe(1.89);
   });
 });
 
