@@ -24,7 +24,7 @@ export function calculateFeeTiers(feesGwei: number[]): {
 }
 
 export function calculateCongestion(gasUsedRatio: number): CongestionLevel {
-  if (gasUsedRatio < 0.5) return "low";
+  if (gasUsedRatio <= 0.5) return "low";
   if (gasUsedRatio < 0.75) return "normal";
   if (gasUsedRatio < 0.9) return "high";
   return "critical";
