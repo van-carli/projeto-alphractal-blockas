@@ -46,6 +46,7 @@ export class FeeSnapshotService {
   private lastPriceQuote: EthUsdQuote | null = null;
   private priceAvailable = false;
   private pendingObservations: Array<{ observedAtMs: number; count: number }> = [];
+  private previousStandardFeeGwei: number | null = null;
 
   constructor(opts: FeeSnapshotServiceOptions) {
     this.opts = opts;
@@ -133,6 +134,12 @@ export class FeeSnapshotService {
 
       const baseFeeGwei = Number(block.baseFeePerGas) / WEI_PER_GWEI;
       const gasUsedRatio = Number(block.gasUsed) / Number(block.gasLimit);
+      const pendingTransactionsPerSecond =
+        this.getPendingTransactionsPerSecond();
+      const standardFeeChangeRatio = this.previousStandardFeeGwei
+        ? (priorityFees.standard - this.previousStandardFeeGwei) /
+          this.previousStandardFeeGwei
+        : 0;
 
       const estimatedCosts = this.opts.operations.map((op) =>
         buildEstimatedCost(
@@ -156,10 +163,16 @@ export class FeeSnapshotService {
         ethUsd: priceQuote.price,
         priceUpdatedAt: priceQuote.updatedAt.toISOString(),
         priceStatus: this.isPriceStale(priceQuote) ? "stale" : "fresh",
-        pendingTransactionsPerSecond: this.getPendingTransactionsPerSecond(),
-        congestionLevel: calculateCongestion(gasUsedRatio),
+        pendingTransactionsPerSecond,
+        congestionLevel: calculateCongestion({
+          gasUsedRatio,
+          pendingTransactionsPerSecond,
+          standardFeeChangeRatio,
+        }),
         estimatedCosts,
       };
+
+      this.previousStandardFeeGwei = priorityFees.standard;
 
       await this.opts.repository.save(snapshot);
       this.opts.sseHub.broadcastSnapshot(snapshot);

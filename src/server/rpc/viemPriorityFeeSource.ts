@@ -9,7 +9,7 @@ const WEI_PER_GWEI = 1e9;
 /**
  * Reaproveita o mesmo client viem para consultar getFeeHistory,
  * que devolve, por bloco, os valores de prioridade pagos nos
- * percentis pedidos (10 = lenta, 50 = padrão, 90 = rápida).
+ * percentis pedidos (25 = lenta, 50 = padrão, 90 = rápida).
  */
 export class ViemPriorityFeeSource implements PriorityFeeSource {
   constructor(private readonly client: PublicClient) {}
@@ -17,7 +17,7 @@ export class ViemPriorityFeeSource implements PriorityFeeSource {
   async getPriorityFeeGwei(blockNumber: bigint): Promise<PriorityFeeGwei> {
     const feeHistory = await this.client.getFeeHistory({
       blockCount: 1,
-      rewardPercentiles: [10, 50, 90],
+      rewardPercentiles: [25, 50, 90],
       blockNumber,
     });
 
