@@ -29,14 +29,24 @@ export type ApplicationRuntime = Readonly<{
   chainId: number;
 }>;
 
-let currentRuntime: ApplicationRuntime | null = null;
+// Usa globalThis para garantir uma única instância mesmo quando o
+// bundler cria módulos isolados para instrumentation e route handlers (dev).
+const runtimeGlobalKey = "__alphractalApplicationRuntime__" as const;
+
+type RuntimeGlobal = typeof globalThis & {
+  [runtimeGlobalKey]?: ApplicationRuntime | null;
+};
 
 /**
  * Chamado pelos route handlers para acessar o runtime.
  * Retorna null se o servidor ainda não terminou de iniciar.
  */
 export function getRuntime(): ApplicationRuntime | null {
-  return currentRuntime;
+  return (globalThis as RuntimeGlobal)[runtimeGlobalKey] ?? null;
+}
+
+function setRuntime(runtime: ApplicationRuntime | null): void {
+  (globalThis as RuntimeGlobal)[runtimeGlobalKey] = runtime;
 }
 
 export async function startApplicationRuntime(): Promise<ServerRuntimeStop> {
@@ -79,7 +89,7 @@ export async function startApplicationRuntime(): Promise<ServerRuntimeStop> {
   const stopPipeline = await feeService.start();
   logger.info("[runtime] pipeline de telemetria iniciado");
 
-  currentRuntime = { repository, sseHub, feeService, chainId: CHAIN_ID };
+  setRuntime({ repository, sseHub, feeService, chainId: CHAIN_ID });
 
   return async () => {
     try {
@@ -88,7 +98,7 @@ export async function startApplicationRuntime(): Promise<ServerRuntimeStop> {
       rpcClient.close();
     } finally {
       sseHub.close();
-      currentRuntime = null;
+      setRuntime(null);
       logger.info("[runtime] pipeline de telemetria encerrado");
     }
   };

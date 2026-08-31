@@ -107,7 +107,7 @@ export class FeeSnapshotService {
     let status: "healthy" | "degraded" | "unhealthy";
     if (!this.rpcConnected) {
       status = "unhealthy";
-    } else if (priceStatus === "stale") {
+    } else if (priceStatus === "stale" || priceStatus === "unavailable") {
       status = "degraded";
     } else {
       status = "healthy";

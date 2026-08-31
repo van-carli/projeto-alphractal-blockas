@@ -23,11 +23,38 @@ export function calculateFeeTiers(feesGwei: number[]): {
   };
 }
 
-export function calculateCongestion(gasUsedRatio: number): CongestionLevel {
-  if (gasUsedRatio <= 0.5) return "low";
-  if (gasUsedRatio < 0.75) return "normal";
-  if (gasUsedRatio < 0.9) return "high";
-  return "critical";
+export type CongestionSignals = Readonly<{
+  gasUsedRatio: number;
+  pendingTransactionsPerSecond: number;
+  standardFeeChangeRatio: number;
+}>;
+
+const CONGESTION_LEVELS: readonly CongestionLevel[] = [
+  "low",
+  "normal",
+  "high",
+  "critical",
+];
+
+export function calculateCongestion(signals: CongestionSignals): CongestionLevel {
+  const gasSeverity = severityFor(signals.gasUsedRatio, [0.5, 0.75, 0.9]);
+  const pendingSeverity = severityFor(
+    signals.pendingTransactionsPerSecond,
+    [10, 50, 100]
+  );
+  const feeSeverity = severityFor(
+    Math.max(0, signals.standardFeeChangeRatio),
+    [0.1, 0.25, 0.5]
+  );
+
+  return CONGESTION_LEVELS[Math.max(gasSeverity, pendingSeverity, feeSeverity)];
+}
+
+function severityFor(value: number, thresholds: readonly number[]): number {
+  if (value < thresholds[0]) return 0;
+  if (value < thresholds[1]) return 1;
+  if (value < thresholds[2]) return 2;
+  return 3;
 }
 
 function gweiCostToUsd(
