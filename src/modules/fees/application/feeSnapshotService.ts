@@ -152,7 +152,7 @@ export class FeeSnapshotService {
       );
 
       const snapshot: FeeSnapshot = {
-        sequence: this.sequence++,
+        sequence: this.sequence,
         timestamp: this.opts.clock.now().toISOString(),
         chainId: block.chainId,
         blockNumber: block.blockNumber.toString(),
@@ -172,9 +172,13 @@ export class FeeSnapshotService {
         estimatedCosts,
       };
 
-      this.previousStandardFeeGwei = priorityFees.standard;
+      const saved = await this.opts.repository.save(snapshot);
+      if (!saved) {
+        return;
+      }
 
-      await this.opts.repository.save(snapshot);
+      this.sequence++;
+      this.previousStandardFeeGwei = priorityFees.standard;
       this.opts.sseHub.broadcastSnapshot(snapshot);
 
       this.lastBlock = snapshot.blockNumber;

@@ -13,7 +13,7 @@ function makeBlock(blockNumber: bigint): EthereumBlockTelemetry {
   return {
     chainId: 1,
     blockNumber,
-    blockHash: `0x${"a".repeat(64)}`,
+    blockHash: `0x${blockNumber.toString(16).padStart(64, "0")}`,
     timestamp: new Date(),
     baseFeePerGas: 10_000_000_000n, // 10 gwei
     gasUsed: 15_000_000n,
@@ -83,6 +83,7 @@ describe("FeeSnapshotService", () => {
     const { service, telemetry, repository } = createService();
     await service.start();
 
+    await telemetry.emitBlock(makeBlock(100n));
     await telemetry.emitBlock(makeBlock(100n));
     await telemetry.emitBlock(makeBlock(101n));
 

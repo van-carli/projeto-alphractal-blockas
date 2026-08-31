@@ -6,14 +6,17 @@ function makeSnapshot(
   blockNumber: string,
   sequence: number,
   chainId = 1,
-  timestamp = new Date().toISOString()
+  timestamp = new Date().toISOString(),
+  hashCharacter?: string
 ): FeeSnapshot {
   return {
     sequence,
     timestamp,
     chainId,
     blockNumber,
-    blockHash: `0x${"a".repeat(64)}`,
+    blockHash: hashCharacter
+      ? `0x${hashCharacter.repeat(64)}`
+      : `0x${BigInt(blockNumber).toString(16).padStart(64, "0")}`,
     baseFeeGwei: 20,
     gasUsedRatio: 0.5,
     priorityFeeGwei: { slow: 15, standard: 20, fast: 30 },
@@ -56,6 +59,20 @@ describe("InMemorySnapshotRepository", () => {
     await repo.save(makeSnapshot("1", 1));
 
     expect(repo.size()).toBe(1);
+  });
+
+  it("substitui o bloco quando a mesma altura chega com outro hash", async () => {
+    const repo = new InMemorySnapshotRepository(10);
+    await repo.save(makeSnapshot("100", 1, 1, "2026-08-24T10:00:00.000Z", "a"));
+    await repo.save(makeSnapshot("100", 2, 1, "2026-08-24T10:00:01.000Z", "b"));
+
+    expect(repo.size()).toBe(1);
+    expect(await repo.getLatest(1)).toMatchObject({
+      blockNumber: "100",
+      blockHash: `0x${"b".repeat(64)}`,
+      sequence: 2,
+    });
+    expect(await repo.getHistory({ chainId: 1, limit: 10 })).toHaveLength(1);
   });
 
   it("respeita o limite máximo do histórico", async () => {

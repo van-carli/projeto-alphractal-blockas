@@ -43,7 +43,7 @@ export type SnapshotHistoryQuery = Readonly<{
 }>
 
 export interface SnapshotRepository {
-  save(snapshot: FeeSnapshot): Promise<void>
+  save(snapshot: FeeSnapshot): Promise<boolean>
   getLatest(chainId: number): Promise<FeeSnapshot | null>
   getHistory(query: SnapshotHistoryQuery): Promise<readonly FeeSnapshot[]>
 }
