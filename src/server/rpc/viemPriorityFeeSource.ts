@@ -1,5 +1,4 @@
-import { createPublicClient, webSocket, type PublicClient } from "viem";
-import { mainnet } from "viem/chains";
+import type { PublicClient } from "viem";
 import type {
   PriorityFeeSource,
   PriorityFeeGwei,
@@ -10,22 +9,15 @@ const WEI_PER_GWEI = 1e9;
 /**
  * Reaproveita o mesmo client viem para consultar getFeeHistory,
  * que devolve, por bloco, os valores de prioridade pagos nos
- * percentis pedidos (10 = lenta, 50 = padrão, 90 = rápida).
+ * percentis pedidos (25 = lenta, 50 = padrão, 90 = rápida).
  */
 export class ViemPriorityFeeSource implements PriorityFeeSource {
-  private client: PublicClient;
-
-  constructor(rpcWebSocketUrl: string) {
-    this.client = createPublicClient({
-      chain: mainnet,
-      transport: webSocket(rpcWebSocketUrl),
-    });
-  }
+  constructor(private readonly client: PublicClient) {}
 
   async getPriorityFeeGwei(blockNumber: bigint): Promise<PriorityFeeGwei> {
     const feeHistory = await this.client.getFeeHistory({
       blockCount: 1,
-      rewardPercentiles: [10, 50, 90],
+      rewardPercentiles: [25, 50, 90],
       blockNumber,
     });
 

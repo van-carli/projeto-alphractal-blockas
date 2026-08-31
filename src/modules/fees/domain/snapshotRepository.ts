@@ -18,18 +18,38 @@ export class InMemorySnapshotRepository implements SnapshotRepository {
   }
 
   private keyFor(snapshot: FeeSnapshot): string {
-    return `${snapshot.chainId}:${snapshot.blockNumber}`;
+    return `${snapshot.chainId}:${snapshot.blockHash}`;
   }
 
-  async save(snapshot: FeeSnapshot): Promise<void> {
+  async save(snapshot: FeeSnapshot): Promise<boolean> {
     const key = this.keyFor(snapshot);
     if (this.seenKeys.has(key)) {
-      return;
+      return false;
     }
 
-    this.history.push(snapshot);
+    const sameHeightIndex = this.history.findIndex(
+      (item) =>
+        item.chainId === snapshot.chainId &&
+        item.blockNumber === snapshot.blockNumber
+    );
+
+    if (sameHeightIndex >= 0) {
+      const replaced = this.history[sameHeightIndex];
+      this.seenKeys.delete(this.keyFor(replaced));
+      this.history[sameHeightIndex] = snapshot;
+    } else {
+      this.history.push(snapshot);
+    }
+
     this.seenKeys.add(key);
-    this.latestByChain.set(snapshot.chainId, snapshot);
+
+    const latest = this.latestByChain.get(snapshot.chainId);
+    if (
+      !latest ||
+      BigInt(snapshot.blockNumber) >= BigInt(latest.blockNumber)
+    ) {
+      this.latestByChain.set(snapshot.chainId, snapshot);
+    }
 
     if (this.history.length > this.maxHistorySize) {
       const removed = this.history.shift();
@@ -37,6 +57,8 @@ export class InMemorySnapshotRepository implements SnapshotRepository {
         this.seenKeys.delete(this.keyFor(removed));
       }
     }
+
+    return true;
   }
 
   async getLatest(chainId: number): Promise<FeeSnapshot | null> {

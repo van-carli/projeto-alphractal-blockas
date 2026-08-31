@@ -3,6 +3,7 @@ import { getServerEnv } from "./config/env";
 import { SystemClock } from "./clock";
 import { ViemBlockSource } from "./rpc/viemBlockSource";
 import { ViemPriorityFeeSource } from "./rpc/viemPriorityFeeSource";
+import { ViemPendingTransactionSource } from "./rpc/viemPendingTransactionSource";
 import { HttpEthUsdPriceSource } from "./price/httpEthUsdPriceSource";
 import { InMemorySnapshotRepository } from "@/modules/fees/domain/snapshotRepository";
 import { SseHub } from "./sse/sseHub";
@@ -11,6 +12,8 @@ import {
   type OperationDefinition,
 } from "@/modules/fees/application/feeSnapshotService";
 import { logger } from "./logger";
+import { createPublicClient, webSocket } from "viem";
+import { mainnet } from "viem/chains";
 
 const DEFAULT_OPERATIONS: OperationDefinition[] = [
   { operation: "ETH transfer", gasUnits: 21000 },
@@ -39,16 +42,23 @@ export function getRuntime(): ApplicationRuntime | null {
 export async function startApplicationRuntime(): Promise<ServerRuntimeStop> {
   const env = getServerEnv();
   const clock = new SystemClock();
+  const ethereumClient = createPublicClient({
+    chain: mainnet,
+    transport: webSocket(env.ETHEREUM_WS_RPC_URL, {
+      reconnect: { attempts: 10, delay: 2_000 },
+    }),
+  });
 
-  const telemetrySource = new ViemBlockSource(env.ETHEREUM_WS_RPC_URL);
-
-  const priorityFeeSource = new ViemPriorityFeeSource(
-    env.ETHEREUM_WS_RPC_URL
+  const telemetrySource = new ViemBlockSource(ethereumClient);
+  const priorityFeeSource = new ViemPriorityFeeSource(ethereumClient);
+  const pendingTransactionSource = new ViemPendingTransactionSource(
+    ethereumClient
   );
 
   const priceSource = new HttpEthUsdPriceSource({
     apiUrl: env.ETH_USD_API_URL,
     clock,
+    refreshIntervalMs: env.ETH_USD_POLL_INTERVAL_MS,
   });
 
   const repository = new InMemorySnapshotRepository(env.HISTORY_MAX_POINTS);
@@ -57,6 +67,7 @@ export async function startApplicationRuntime(): Promise<ServerRuntimeStop> {
   const feeService = new FeeSnapshotService({
     telemetrySource,
     priorityFeeSource,
+    pendingTransactionSource,
     priceSource,
     repository,
     sseHub,
@@ -71,9 +82,14 @@ export async function startApplicationRuntime(): Promise<ServerRuntimeStop> {
   currentRuntime = { repository, sseHub, feeService, chainId: CHAIN_ID };
 
   return async () => {
-    await stopPipeline();
-    sseHub.close();
-    currentRuntime = null;
-    logger.info("[runtime] pipeline de telemetria encerrado");
+    try {
+      await stopPipeline();
+      const rpcClient = await ethereumClient.transport.getRpcClient();
+      rpcClient.close();
+    } finally {
+      sseHub.close();
+      currentRuntime = null;
+      logger.info("[runtime] pipeline de telemetria encerrado");
+    }
   };
 }

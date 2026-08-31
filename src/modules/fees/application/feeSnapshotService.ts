@@ -3,6 +3,7 @@ import type {
   EthereumBlockTelemetry,
   EthUsdPriceSource,
   EthUsdQuote,
+  PendingTransactionSource,
   PriorityFeeSource,
   SnapshotRepository,
   Clock,
@@ -24,6 +25,7 @@ export type OperationDefinition = Readonly<{
 export type FeeSnapshotServiceOptions = Readonly<{
   telemetrySource: EthereumTelemetrySource;
   priorityFeeSource: PriorityFeeSource;
+  pendingTransactionSource: PendingTransactionSource;
   priceSource: EthUsdPriceSource;
   repository: SnapshotRepository;
   sseHub: SseHub;
@@ -43,6 +45,8 @@ export class FeeSnapshotService {
   private lastBlockAt: string | null = null;
   private lastPriceQuote: EthUsdQuote | null = null;
   private priceAvailable = false;
+  private pendingObservations: Array<{ observedAtMs: number; count: number }> = [];
+  private previousStandardFeeGwei: number | null = null;
 
   constructor(opts: FeeSnapshotServiceOptions) {
     this.opts = opts;
@@ -53,11 +57,37 @@ export class FeeSnapshotService {
       throw new Error("FeeSnapshotService já está rodando");
     }
 
-    this.unsubscribe = await this.opts.telemetrySource.subscribeToBlocks(
-      async (block) => {
-        await this.handleBlock(block);
-      }
-    );
+    let stopPendingTransactions: Unsubscribe = () => {};
+    try {
+      stopPendingTransactions =
+        await this.opts.pendingTransactionSource.subscribeToPendingTransactions(
+          (hashes) => this.recordPendingTransactions(hashes.length)
+        );
+    } catch (error) {
+      logger.warn("[pipeline] transações pendentes indisponíveis", {
+        error: error instanceof Error ? error.message : "desconhecido",
+      });
+    }
+
+    try {
+      const stopBlocks = await this.opts.telemetrySource.subscribeToBlocks(
+        async (block) => {
+          await this.handleBlock(block);
+        },
+        (connected) => {
+          this.rpcConnected = connected;
+          this.opts.sseHub.broadcastHealth(this.getHealth());
+        },
+      );
+
+      this.unsubscribe = async () => {
+        await stopBlocks();
+        await stopPendingTransactions();
+      };
+    } catch (error) {
+      await stopPendingTransactions();
+      throw error;
+    }
 
     this.rpcConnected = true;
     logger.info("[pipeline] inscrito em blocos");
@@ -66,6 +96,7 @@ export class FeeSnapshotService {
       await this.unsubscribe?.();
       this.unsubscribe = null;
       this.rpcConnected = false;
+      this.opts.sseHub.broadcastHealth(this.getHealth());
       logger.info("[pipeline] desinscrito de blocos");
     };
   }
@@ -105,6 +136,12 @@ export class FeeSnapshotService {
 
       const baseFeeGwei = Number(block.baseFeePerGas) / WEI_PER_GWEI;
       const gasUsedRatio = Number(block.gasUsed) / Number(block.gasLimit);
+      const pendingTransactionsPerSecond =
+        this.getPendingTransactionsPerSecond();
+      const standardFeeChangeRatio = this.previousStandardFeeGwei
+        ? (priorityFees.standard - this.previousStandardFeeGwei) /
+          this.previousStandardFeeGwei
+        : 0;
 
       const estimatedCosts = this.opts.operations.map((op) =>
         buildEstimatedCost(
@@ -117,7 +154,7 @@ export class FeeSnapshotService {
       );
 
       const snapshot: FeeSnapshot = {
-        sequence: this.sequence++,
+        sequence: this.sequence,
         timestamp: this.opts.clock.now().toISOString(),
         chainId: block.chainId,
         blockNumber: block.blockNumber.toString(),
@@ -128,16 +165,27 @@ export class FeeSnapshotService {
         ethUsd: priceQuote.price,
         priceUpdatedAt: priceQuote.updatedAt.toISOString(),
         priceStatus: this.isPriceStale(priceQuote) ? "stale" : "fresh",
-        pendingTransactionsPerSecond: null,
-        congestionLevel: calculateCongestion(gasUsedRatio),
+        pendingTransactionsPerSecond,
+        congestionLevel: calculateCongestion({
+          gasUsedRatio,
+          pendingTransactionsPerSecond,
+          standardFeeChangeRatio,
+        }),
         estimatedCosts,
       };
 
-      await this.opts.repository.save(snapshot);
-      this.opts.sseHub.broadcastSnapshot(snapshot);
+      const saved = await this.opts.repository.save(snapshot);
+      if (!saved) {
+        return;
+      }
 
+      this.sequence++;
+      this.previousStandardFeeGwei = priorityFees.standard;
       this.lastBlock = snapshot.blockNumber;
       this.lastBlockAt = snapshot.timestamp;
+
+      this.opts.sseHub.broadcastSnapshot(snapshot);
+      this.opts.sseHub.broadcastHealth(this.getHealth());
 
       logger.info("[pipeline] snapshot salvo", {
         block: snapshot.blockNumber,
@@ -158,5 +206,31 @@ export class FeeSnapshotService {
   private getPriceStatus(): "fresh" | "stale" | "unavailable" {
     if (!this.priceAvailable || !this.lastPriceQuote) return "unavailable";
     return this.isPriceStale(this.lastPriceQuote) ? "stale" : "fresh";
+  }
+
+  private recordPendingTransactions(count: number): void {
+    this.prunePendingObservations();
+    if (count > 0) {
+      this.pendingObservations.push({
+        observedAtMs: this.opts.clock.now().getTime(),
+        count,
+      });
+      this.opts.sseHub.broadcastHealth(this.getHealth());
+    }
+  }
+
+  private getPendingTransactionsPerSecond(): number {
+    this.prunePendingObservations();
+    return this.pendingObservations.reduce(
+      (total, observation) => total + observation.count,
+      0
+    );
+  }
+
+  private prunePendingObservations(): void {
+    const cutoff = this.opts.clock.now().getTime() - 1_000;
+    this.pendingObservations = this.pendingObservations.filter(
+      (observation) => observation.observedAtMs > cutoff
+    );
   }
 }

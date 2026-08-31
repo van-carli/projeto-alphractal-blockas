@@ -8,6 +8,7 @@ import type {
 const CoinGeckoResponseSchema = z.object({
   ethereum: z.object({
     usd: z.number().positive(),
+    last_updated_at: z.number().int().positive().optional(),
   }),
 });
 
@@ -17,6 +18,7 @@ export type HttpEthUsdPriceSourceOptions = Readonly<{
   timeoutMs?: number;
   maxRetries?: number;
   retryDelayMs?: number;
+  refreshIntervalMs?: number;
   fetchImpl?: typeof fetch;
 }>;
 
@@ -26,10 +28,12 @@ export class HttpEthUsdPriceSource implements EthUsdPriceSource {
   private readonly timeoutMs: number;
   private readonly maxRetries: number;
   private readonly retryDelayMs: number;
+  private readonly refreshIntervalMs: number;
   private readonly fetchImpl: typeof fetch;
 
   // guarda o último preço que deu certo, para usar como fallback
   private lastValidQuote: EthUsdQuote | null = null;
+  private lastRequestAtMs: number | null = null;
 
   constructor(options: HttpEthUsdPriceSourceOptions) {
     this.apiUrl = options.apiUrl;
@@ -37,10 +41,22 @@ export class HttpEthUsdPriceSource implements EthUsdPriceSource {
     this.timeoutMs = options.timeoutMs ?? 5000;
     this.maxRetries = options.maxRetries ?? 2;
     this.retryDelayMs = options.retryDelayMs ?? 500;
+    this.refreshIntervalMs = options.refreshIntervalMs ?? 30_000;
     this.fetchImpl = options.fetchImpl ?? fetch;
   }
 
   async getCurrentPrice(): Promise<EthUsdQuote> {
+    const nowMs = this.clock.now().getTime();
+    if (
+      this.lastValidQuote &&
+      this.lastRequestAtMs !== null &&
+      nowMs - this.lastRequestAtMs < this.refreshIntervalMs
+    ) {
+      return this.lastValidQuote;
+    }
+
+    this.lastRequestAtMs = nowMs;
+
     // tenta a chamada até maxRetries + 1 vezes no total
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
@@ -71,8 +87,13 @@ export class HttpEthUsdPriceSource implements EthUsdPriceSource {
     const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
 
     try {
-      const url = `${this.apiUrl}?ids=ethereum&vs_currencies=usd`;
-      const response = await this.fetchImpl(url, { signal: controller.signal });
+      const url = new URL(this.apiUrl);
+      url.searchParams.set("ids", "ethereum");
+      url.searchParams.set("vs_currencies", "usd");
+      url.searchParams.set("include_last_updated_at", "true");
+      const response = await this.fetchImpl(url.toString(), {
+        signal: controller.signal,
+      });
 
       if (!response.ok) {
         throw new Error(`resposta HTTP inesperada: ${response.status}`);
@@ -83,7 +104,9 @@ export class HttpEthUsdPriceSource implements EthUsdPriceSource {
 
       return {
         price: parsed.ethereum.usd,
-        updatedAt: this.clock.now(),
+        updatedAt: parsed.ethereum.last_updated_at
+          ? new Date(parsed.ethereum.last_updated_at * 1000)
+          : this.clock.now(),
       };
     } finally {
       clearTimeout(timeoutId);

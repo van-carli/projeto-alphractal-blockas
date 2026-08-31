@@ -1,6 +1,7 @@
 import type { FeeSnapshot } from '../domain/fee-snapshot'
 
 export type Unsubscribe = () => void | Promise<void>
+export type EthereumConnectionListener = (connected: boolean) => void
 
 export type EthereumBlockTelemetry = Readonly<{
   chainId: number
@@ -15,6 +16,13 @@ export type EthereumBlockTelemetry = Readonly<{
 export interface EthereumTelemetrySource {
   subscribeToBlocks(
     listener: (block: EthereumBlockTelemetry) => void | Promise<void>,
+    connectionListener?: EthereumConnectionListener,
+  ): Promise<Unsubscribe>
+}
+
+export interface PendingTransactionSource {
+  subscribeToPendingTransactions(
+    listener: (hashes: readonly `0x${string}`[]) => void,
   ): Promise<Unsubscribe>
 }
 
@@ -35,7 +43,7 @@ export type SnapshotHistoryQuery = Readonly<{
 }>
 
 export interface SnapshotRepository {
-  save(snapshot: FeeSnapshot): Promise<void>
+  save(snapshot: FeeSnapshot): Promise<boolean>
   getLatest(chainId: number): Promise<FeeSnapshot | null>
   getHistory(query: SnapshotHistoryQuery): Promise<readonly FeeSnapshot[]>
 }

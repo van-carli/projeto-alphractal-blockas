@@ -17,7 +17,7 @@ export function calculateFeeTiers(feesGwei: number[]): {
   fast: number;
 } {
   return {
-    slow: percentile(feesGwei, 10),
+    slow: percentile(feesGwei, 25),
     standard: percentile(feesGwei, 50),
     fast: percentile(feesGwei, 90),
   };

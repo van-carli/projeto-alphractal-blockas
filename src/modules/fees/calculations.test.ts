@@ -22,19 +22,45 @@ describe("percentile", () => {
 });
 
 describe("calculateFeeTiers", () => {
-  it("devolve slow, standard e fast em ordem crescente", () => {
-    const fees = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50];
-    const result = calculateFeeTiers(fees);
-    expect(result.slow).toBeLessThan(result.standard);
-    expect(result.standard).toBeLessThan(result.fast);
+  it("usa p25, p50 e p90 para as faixas lenta, padrão e rápida", () => {
+    expect(calculateFeeTiers([0, 100])).toEqual({
+      slow: 25,
+      standard: 50,
+      fast: 90,
+    });
   });
 });
 
 describe("calculateCongestion", () => {
-  it("classifica como low", () => expect(calculateCongestion(0.3)).toBe("low"));
-  it("classifica como normal", () => expect(calculateCongestion(0.6)).toBe("normal"));
-  it("classifica como high", () => expect(calculateCongestion(0.8)).toBe("high"));
-  it("classifica como critical", () => expect(calculateCongestion(0.95)).toBe("critical"));
+  it("classifica uma rede ociosa como low", () => {
+    expect(
+      calculateCongestion({
+        gasUsedRatio: 0.3,
+        pendingTransactionsPerSecond: 2,
+        standardFeeChangeRatio: 0,
+      })
+    ).toBe("low");
+  });
+
+  it("eleva o congestionamento quando a mempool observada cresce", () => {
+    expect(
+      calculateCongestion({
+        gasUsedRatio: 0.3,
+        pendingTransactionsPerSecond: 60,
+        standardFeeChangeRatio: 0,
+      })
+    ).toBe("high");
+  });
+
+  it("classifica uma alta brusca da taxa padrão como critical", () => {
+    expect(
+      calculateCongestion({
+        gasUsedRatio: 0.4,
+        pendingTransactionsPerSecond: 5,
+        standardFeeChangeRatio: 0.6,
+      })
+    ).toBe("critical");
+  });
 });
 
 describe("buildEstimatedCost", () => {

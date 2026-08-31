@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { FeeSnapshotService } from "./feeSnapshotService";
 import { FakeTelemetrySource } from "@/server/rpc/fakeTelemetrySource";
 import { FakePriorityFeeSource } from "@/server/rpc/fakePriorityFeeSource";
+import { FakePendingTransactionSource } from "@/server/rpc/fakePendingTransactionSource";
 import { FakeEthUsdPriceSource } from "@/server/price/fakeEthUsdPriceSource";
 import { InMemorySnapshotRepository } from "../domain/snapshotRepository";
 import { SseHub } from "@/server/sse/sseHub";
@@ -12,7 +13,7 @@ function makeBlock(blockNumber: bigint): EthereumBlockTelemetry {
   return {
     chainId: 1,
     blockNumber,
-    blockHash: `0x${"a".repeat(64)}`,
+    blockHash: `0x${blockNumber.toString(16).padStart(64, "0")}`,
     timestamp: new Date(),
     baseFeePerGas: 10_000_000_000n, // 10 gwei
     gasUsed: 15_000_000n,
@@ -27,6 +28,7 @@ function createService() {
     standard: 2,
     fast: 5,
   });
+  const pendingTransactions = new FakePendingTransactionSource();
   const clock = new FakeClock(new Date("2026-08-24T10:00:00.000Z"));
   const price = new FakeEthUsdPriceSource({
     price: 3000,
@@ -38,6 +40,7 @@ function createService() {
   const service = new FeeSnapshotService({
     telemetrySource: telemetry,
     priorityFeeSource: priorityFee,
+    pendingTransactionSource: pendingTransactions,
     priceSource: price,
     repository,
     sseHub,
@@ -46,7 +49,16 @@ function createService() {
     operations: [{ operation: "ETH transfer", gasUnits: 21000 }],
   });
 
-  return { service, telemetry, priorityFee, price, repository, sseHub, clock };
+  return {
+    service,
+    telemetry,
+    priorityFee,
+    pendingTransactions,
+    price,
+    repository,
+    sseHub,
+    clock,
+  };
 }
 
 describe("FeeSnapshotService", () => {
@@ -61,7 +73,7 @@ describe("FeeSnapshotService", () => {
     expect(latest!.blockNumber).toBe("100");
     expect(latest!.baseFeeGwei).toBe(10);
     expect(latest!.gasUsedRatio).toBe(0.5);
-    expect(latest!.congestionLevel).toBe("low");
+    expect(latest!.congestionLevel).toBe("normal");
     expect(latest!.priorityFeeGwei).toEqual({ slow: 1, standard: 2, fast: 5 });
     expect(latest!.estimatedCosts.length).toBe(1);
     expect(latest!.estimatedCosts[0].operation).toBe("ETH transfer");
@@ -71,6 +83,7 @@ describe("FeeSnapshotService", () => {
     const { service, telemetry, repository } = createService();
     await service.start();
 
+    await telemetry.emitBlock(makeBlock(100n));
     await telemetry.emitBlock(makeBlock(100n));
     await telemetry.emitBlock(makeBlock(101n));
 
@@ -89,18 +102,58 @@ describe("FeeSnapshotService", () => {
     expect(latest!.priceStatus).toBe("stale");
   });
 
-  it("health começa como unhealthy e muda para healthy após start", async () => {
+  it("health começa unhealthy e fica degraded enquanto o preço está indisponível", async () => {
     const { service } = createService();
     expect(service.getHealth().status).toBe("unhealthy");
 
     await service.start();
-    expect(service.getHealth().status).toBe("healthy");
+    expect(service.getHealth().status).toBe("degraded");
     expect(service.getHealth().rpcConnected).toBe(true);
   });
 
   it("health indica priceStatus unavailable se nunca houve preço", async () => {
     const { service } = createService();
     expect(service.getHealth().priceStatus).toBe("unavailable");
+  });
+
+  it("reflete desconexão e recuperação da fonte Ethereum no health", async () => {
+    const { service, telemetry } = createService();
+    await service.start();
+    await telemetry.emitBlock(makeBlock(100n));
+
+    expect(service.getHealth().status).toBe("healthy");
+
+    telemetry.emitConnectionStatus(false);
+    expect(service.getHealth()).toMatchObject({
+      status: "unhealthy",
+      rpcConnected: false,
+    });
+
+    telemetry.emitConnectionStatus(true);
+    expect(service.getHealth()).toMatchObject({
+      status: "healthy",
+      rpcConnected: true,
+    });
+  });
+
+  it("inclui a taxa observada de transações pendentes no snapshot", async () => {
+    const { service, telemetry, pendingTransactions, repository, clock } =
+      createService();
+    await service.start();
+
+    pendingTransactions.emit([
+      `0x${"1".repeat(64)}`,
+      `0x${"2".repeat(64)}`,
+      `0x${"3".repeat(64)}`,
+    ]);
+    await telemetry.emitBlock(makeBlock(100n));
+
+    expect((await repository.getLatest(1))?.pendingTransactionsPerSecond).toBe(3);
+
+    clock.advance(1_001);
+    await telemetry.emitBlock(makeBlock(101n));
+
+    expect((await repository.getLatest(1))?.pendingTransactionsPerSecond).toBe(0);
   });
 
   it("não quebra se o processamento de um bloco falhar", async () => {

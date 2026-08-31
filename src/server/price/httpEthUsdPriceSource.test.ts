@@ -31,6 +31,51 @@ describe("HttpEthUsdPriceSource", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it("reutiliza o preço durante o intervalo de atualização configurado", async () => {
+    const clock = new FakeClock(new Date("2026-08-24T10:00:00.000Z"));
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ ethereum: { usd: 3000 } })
+    );
+    const source = new HttpEthUsdPriceSource({
+      apiUrl: "https://api.example.invalid/price",
+      clock,
+      fetchImpl,
+      refreshIntervalMs: 30_000,
+    });
+
+    await source.getCurrentPrice();
+    clock.advance(29_999);
+    await source.getCurrentPrice();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    clock.advance(1);
+    await source.getCurrentPrice();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("usa o instante informado pelo provedor para calcular a idade do preço", async () => {
+    const clock = new FakeClock(new Date("2026-08-24T10:05:00.000Z"));
+    const providerTimestamp = Date.parse("2026-08-24T10:00:00.000Z") / 1000;
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        ethereum: { usd: 3000, last_updated_at: providerTimestamp },
+      })
+    );
+    const source = new HttpEthUsdPriceSource({
+      apiUrl: "https://api.example.invalid/price?precision=full",
+      clock,
+      fetchImpl,
+    });
+
+    const quote = await source.getCurrentPrice();
+
+    expect(quote.updatedAt.toISOString()).toBe("2026-08-24T10:00:00.000Z");
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://api.example.invalid/price?precision=full&ids=ethereum&vs_currencies=usd&include_last_updated_at=true",
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+  });
+
   it("tenta novamente em caso de falha, até o limite configurado", async () => {
     const clock = new FakeClock(new Date());
     const fetchImpl = vi

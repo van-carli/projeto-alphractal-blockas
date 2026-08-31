@@ -20,9 +20,11 @@ export {
 export type {
   Clock,
   EthereumBlockTelemetry,
+  EthereumConnectionListener,
   EthereumTelemetrySource,
   EthUsdPriceSource,
   EthUsdQuote,
+  PendingTransactionSource,
   SnapshotHistoryQuery,
   SnapshotRepository,
   Unsubscribe,
