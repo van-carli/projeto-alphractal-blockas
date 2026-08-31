@@ -1,10 +1,12 @@
 'use client'
 
 import {
-  feeHistoryFixture,
-  feeSnapshotFixture,
-  telemetryHealthFixture,
-} from '@/test/fixtures/fees'
+  useFeesHistory,
+  useFeesSnapshot,
+  useHealth,
+} from '@/modules/fees/presentation/api/feesQueries'
+import { useFeesStream } from '@/modules/fees/presentation/sse/useFeesStream'
+import type { FeesStreamConnectionState } from '@/modules/fees/presentation/sse/connectionState'
 
 function formatUsd(value: number) {
   return new Intl.NumberFormat('en-US', {
@@ -62,22 +64,42 @@ function getCongestionClass(
   return 'border-red-400/20 bg-red-400/10 text-red-300'
 }
 
+function getConnectionStateClass(state: FeesStreamConnectionState) {
+  if (state === 'connected') {
+    return 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300'
+  }
+
+  if (state === 'reconectando') {
+    return 'border-amber-400/20 bg-amber-400/10 text-amber-300'
+  }
+
+  if (state === 'connecting') {
+    return 'border-blue-400/20 bg-blue-400/10 text-blue-300'
+  }
+
+  return 'border-red-400/20 bg-red-400/10 text-red-300'
+}
+
 export default function Home() {
-  /*
-   * Task 2:
-   * A página está usando fixtures temporariamente para permitir
-   * a visualização do dashboard sem uma chave RPC.
-   *
-   * Quando a integração real for habilitada, estes valores poderão
-   * voltar a vir dos hooks da API.
-   */
-  const snapshot = feeSnapshotFixture
-  const history = feeHistoryFixture
-  const health = telemetryHealthFixture
+  const { data: snapshot, isLoading: isSnapshotLoading } = useFeesSnapshot()
+  const { data: history } = useFeesHistory()
+  const { data: health } = useHealth()
+  const connectionState = useFeesStream()
+
+  if (isSnapshotLoading || !snapshot || !health) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#030711] text-slate-400">
+        Carregando dashboard…
+      </main>
+    )
+  }
 
   return (
     <main className="min-h-screen bg-[#030711] text-slate-100">
-      <Header healthStatus={health.status} />
+      <Header
+        healthStatus={health.status}
+        connectionState={connectionState}
+      />
 
       <div className="flex min-h-[calc(100vh-64px)]">
         <Sidebar />
@@ -240,7 +262,7 @@ export default function Home() {
                 />
 
                 <span className="rounded bg-[#030711] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.8px] text-slate-500">
-                  Fixture snapshot
+                  Live snapshot
                 </span>
               </div>
 
@@ -295,7 +317,7 @@ export default function Home() {
                 />
 
                 <span className="text-xs text-slate-500">
-                  {history.length} snapshots
+                  {(history ?? []).length} snapshots
                 </span>
               </div>
 
@@ -311,7 +333,7 @@ export default function Home() {
                 </thead>
 
                 <tbody>
-                  {history.map((item) => (
+                  {(history ?? []).map((item) => (
                     <tr
                       key={`${item.sequence}-${item.blockNumber}`}
                       className="border-b border-[#131D34] last:border-0"
@@ -366,8 +388,10 @@ export default function Home() {
 
 function Header({
   healthStatus,
+  connectionState,
 }: {
   healthStatus?: 'healthy' | 'degraded' | 'unhealthy'
+  connectionState?: FeesStreamConnectionState
 }) {
   return (
     <header className="sticky top-0 z-20 h-16 border-b border-[#131D34] bg-[#030711]/95 backdrop-blur-[18px]">
@@ -407,6 +431,16 @@ function Header({
               Ethereum
             </span>
           </div>
+
+          {connectionState && (
+            <div
+              className={`hidden rounded-full border px-3 py-1.5 text-[9px] font-semibold uppercase tracking-wide sm:block ${getConnectionStateClass(
+                connectionState,
+              )}`}
+            >
+              {connectionState}
+            </div>
+          )}
 
           <div
             className={`rounded-full border px-3 py-1.5 text-[9px] font-semibold uppercase tracking-wide md:hidden ${
