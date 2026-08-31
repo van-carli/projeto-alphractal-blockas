@@ -76,6 +76,7 @@ export class FeeSnapshotService {
         },
         (connected) => {
           this.rpcConnected = connected;
+          this.opts.sseHub.broadcastHealth(this.getHealth());
         },
       );
 
@@ -95,6 +96,7 @@ export class FeeSnapshotService {
       await this.unsubscribe?.();
       this.unsubscribe = null;
       this.rpcConnected = false;
+      this.opts.sseHub.broadcastHealth(this.getHealth());
       logger.info("[pipeline] desinscrito de blocos");
     };
   }
@@ -179,10 +181,11 @@ export class FeeSnapshotService {
 
       this.sequence++;
       this.previousStandardFeeGwei = priorityFees.standard;
-      this.opts.sseHub.broadcastSnapshot(snapshot);
-
       this.lastBlock = snapshot.blockNumber;
       this.lastBlockAt = snapshot.timestamp;
+
+      this.opts.sseHub.broadcastSnapshot(snapshot);
+      this.opts.sseHub.broadcastHealth(this.getHealth());
 
       logger.info("[pipeline] snapshot salvo", {
         block: snapshot.blockNumber,
@@ -212,6 +215,7 @@ export class FeeSnapshotService {
         observedAtMs: this.opts.clock.now().getTime(),
         count,
       });
+      this.opts.sseHub.broadcastHealth(this.getHealth());
     }
   }
 

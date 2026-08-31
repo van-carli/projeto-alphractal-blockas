@@ -1,6 +1,7 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { SseHub } from "./sseHub";
 import type { FeeSnapshot } from "@/modules/fees/domain/fee-snapshot";
+import type { TelemetryHealth } from "@/modules/fees/domain/telemetry-health";
 
 function makeSnapshot(blockNumber: string): FeeSnapshot {
   return {
@@ -29,6 +30,18 @@ function makeSnapshot(blockNumber: string): FeeSnapshot {
   };
 }
 
+function makeHealth(): TelemetryHealth {
+  return {
+    status: "healthy",
+    rpcConnected: true,
+    lastBlock: "100",
+    lastBlockAt: "2026-08-24T10:00:00.000Z",
+    priceUpdatedAt: "2026-08-24T10:00:00.000Z",
+    priceStatus: "fresh",
+    sseClients: 1,
+  };
+}
+
 async function readOneEvent(stream: ReadableStream<Uint8Array>): Promise<string> {
   const reader = stream.getReader();
   const { value } = await reader.read();
@@ -41,23 +54,30 @@ describe("SseHub", () => {
 
   afterEach(() => {
     hub?.close();
+    vi.useRealTimers();
   });
 
-  it("envia snapshot inicial ao conectar", async () => {
+  it("envia retry, snapshot e health iniciais ao conectar", async () => {
     hub = new SseHub(999_999);
     const snapshot = makeSnapshot("100");
-    const stream = hub.connect(snapshot);
+    const stream = hub.connect(snapshot, makeHealth());
 
     const text = await readOneEvent(stream);
 
+    expect(text).toContain("retry: 3000");
     expect(text).toContain("event: snapshot");
+    expect(text).toContain("id: 1");
     expect(text).toContain('"blockNumber":"100"');
+    expect(text).toContain("event: health");
+    expect(text).toContain('"status":"healthy"');
   });
 
   it("broadcast envia para todos os clientes conectados", async () => {
     hub = new SseHub(999_999);
     const stream1 = hub.connect(null);
     const stream2 = hub.connect(null);
+    await readOneEvent(stream1);
+    await readOneEvent(stream2);
 
     hub.broadcastSnapshot(makeSnapshot("200"));
 
@@ -66,6 +86,33 @@ describe("SseHub", () => {
 
     expect(text1).toContain('"blockNumber":"200"');
     expect(text2).toContain('"blockNumber":"200"');
+  });
+
+  it("remove o cliente quando a requisição é abortada", async () => {
+    hub = new SseHub(999_999);
+    const request = new AbortController();
+    hub.connect(null, null, request.signal);
+
+    expect(hub.clientCount()).toBe(1);
+    request.abort();
+    await Promise.resolve();
+    expect(hub.clientCount()).toBe(0);
+  });
+
+  it("envia heartbeat no intervalo configurado", async () => {
+    vi.useFakeTimers();
+    hub = new SseHub(15_000);
+    const stream = hub.connect(null);
+    const reader = stream.getReader();
+    await reader.read();
+
+    const heartbeat = reader.read();
+    await vi.advanceTimersByTimeAsync(15_000);
+
+    expect(new TextDecoder().decode((await heartbeat).value)).toBe(
+      ": keep-alive\n\n"
+    );
+    reader.releaseLock();
   });
 
   it("rastreia contagem de clientes", () => {
