@@ -1,34 +1,33 @@
-import { createPublicClient, webSocket, type PublicClient } from "viem";
-import { mainnet } from "viem/chains";
+import type { PublicClient } from "viem";
 import type {
   EthereumTelemetrySource,
   EthereumBlockTelemetry,
+  EthereumConnectionListener,
   Unsubscribe,
 } from "@/modules/fees/application/ports";
+import { logger } from "@/server/logger";
 
 export class ViemBlockSource implements EthereumTelemetrySource {
-  private client: PublicClient | null = null;
+  private unwatch: (() => void) | null = null;
 
-  constructor(private readonly rpcWebSocketUrl: string) {}
+  constructor(private readonly client: PublicClient) {}
 
   async subscribeToBlocks(
-    listener: (block: EthereumBlockTelemetry) => void | Promise<void>
+    listener: (block: EthereumBlockTelemetry) => void | Promise<void>,
+    connectionListener?: EthereumConnectionListener
   ): Promise<Unsubscribe> {
-    if (this.client) {
+    if (this.unwatch) {
       throw new Error(
         "ViemBlockSource já está inscrito. Chame o unsubscribe anterior antes de assinar de novo."
       );
     }
 
-    this.client = createPublicClient({
-      chain: mainnet,
-      transport: webSocket(this.rpcWebSocketUrl),
-    });
-
     const chainId = await this.client.getChainId();
+    connectionListener?.(true);
 
-    const unwatch = this.client.watchBlocks({
+    this.unwatch = this.client.watchBlocks({
       onBlock: async (block) => {
+        connectionListener?.(true);
         if (block.number === null || block.hash === null) {
           return;
         }
@@ -45,14 +44,18 @@ export class ViemBlockSource implements EthereumTelemetrySource {
 
         await listener(telemetry);
       },
-      onError: () => {
-        console.error("[rpc] erro na conexão de blocos");
+      onError: (error) => {
+        connectionListener?.(false);
+        logger.error("[rpc] erro na conexão de blocos", {
+          error: error instanceof Error ? error.message : "desconhecido",
+        });
       },
     });
 
     return async () => {
-      unwatch();
-      this.client = null;
+      this.unwatch?.();
+      this.unwatch = null;
+      connectionListener?.(false);
     };
   }
 }

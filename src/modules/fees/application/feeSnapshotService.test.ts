@@ -103,6 +103,26 @@ describe("FeeSnapshotService", () => {
     expect(service.getHealth().priceStatus).toBe("unavailable");
   });
 
+  it("reflete desconexão e recuperação da fonte Ethereum no health", async () => {
+    const { service, telemetry } = createService();
+    await service.start();
+    await telemetry.emitBlock(makeBlock(100n));
+
+    expect(service.getHealth().status).toBe("healthy");
+
+    telemetry.emitConnectionStatus(false);
+    expect(service.getHealth()).toMatchObject({
+      status: "unhealthy",
+      rpcConnected: false,
+    });
+
+    telemetry.emitConnectionStatus(true);
+    expect(service.getHealth()).toMatchObject({
+      status: "healthy",
+      rpcConnected: true,
+    });
+  });
+
   it("não quebra se o processamento de um bloco falhar", async () => {
     const { service, telemetry, price, repository } = createService();
     await service.start();

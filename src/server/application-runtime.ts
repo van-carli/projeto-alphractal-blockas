@@ -11,6 +11,8 @@ import {
   type OperationDefinition,
 } from "@/modules/fees/application/feeSnapshotService";
 import { logger } from "./logger";
+import { createPublicClient, webSocket } from "viem";
+import { mainnet } from "viem/chains";
 
 const DEFAULT_OPERATIONS: OperationDefinition[] = [
   { operation: "ETH transfer", gasUnits: 21000 },
@@ -39,12 +41,15 @@ export function getRuntime(): ApplicationRuntime | null {
 export async function startApplicationRuntime(): Promise<ServerRuntimeStop> {
   const env = getServerEnv();
   const clock = new SystemClock();
+  const ethereumClient = createPublicClient({
+    chain: mainnet,
+    transport: webSocket(env.ETHEREUM_WS_RPC_URL, {
+      reconnect: { attempts: 10, delay: 2_000 },
+    }),
+  });
 
-  const telemetrySource = new ViemBlockSource(env.ETHEREUM_WS_RPC_URL);
-
-  const priorityFeeSource = new ViemPriorityFeeSource(
-    env.ETHEREUM_WS_RPC_URL
-  );
+  const telemetrySource = new ViemBlockSource(ethereumClient);
+  const priorityFeeSource = new ViemPriorityFeeSource(ethereumClient);
 
   const priceSource = new HttpEthUsdPriceSource({
     apiUrl: env.ETH_USD_API_URL,

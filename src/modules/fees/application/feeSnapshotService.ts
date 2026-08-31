@@ -56,7 +56,10 @@ export class FeeSnapshotService {
     this.unsubscribe = await this.opts.telemetrySource.subscribeToBlocks(
       async (block) => {
         await this.handleBlock(block);
-      }
+      },
+      (connected) => {
+        this.rpcConnected = connected;
+      },
     );
 
     this.rpcConnected = true;
