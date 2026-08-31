@@ -58,6 +58,7 @@ export async function startApplicationRuntime(): Promise<ServerRuntimeStop> {
   const priceSource = new HttpEthUsdPriceSource({
     apiUrl: env.ETH_USD_API_URL,
     clock,
+    refreshIntervalMs: env.ETH_USD_POLL_INTERVAL_MS,
   });
 
   const repository = new InMemorySnapshotRepository(env.HISTORY_MAX_POINTS);
