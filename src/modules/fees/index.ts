@@ -24,6 +24,7 @@ export type {
   EthereumTelemetrySource,
   EthUsdPriceSource,
   EthUsdQuote,
+  PendingTransactionSource,
   SnapshotHistoryQuery,
   SnapshotRepository,
   Unsubscribe,

@@ -3,6 +3,7 @@ import { getServerEnv } from "./config/env";
 import { SystemClock } from "./clock";
 import { ViemBlockSource } from "./rpc/viemBlockSource";
 import { ViemPriorityFeeSource } from "./rpc/viemPriorityFeeSource";
+import { ViemPendingTransactionSource } from "./rpc/viemPendingTransactionSource";
 import { HttpEthUsdPriceSource } from "./price/httpEthUsdPriceSource";
 import { InMemorySnapshotRepository } from "@/modules/fees/domain/snapshotRepository";
 import { SseHub } from "./sse/sseHub";
@@ -50,6 +51,9 @@ export async function startApplicationRuntime(): Promise<ServerRuntimeStop> {
 
   const telemetrySource = new ViemBlockSource(ethereumClient);
   const priorityFeeSource = new ViemPriorityFeeSource(ethereumClient);
+  const pendingTransactionSource = new ViemPendingTransactionSource(
+    ethereumClient
+  );
 
   const priceSource = new HttpEthUsdPriceSource({
     apiUrl: env.ETH_USD_API_URL,
@@ -62,6 +66,7 @@ export async function startApplicationRuntime(): Promise<ServerRuntimeStop> {
   const feeService = new FeeSnapshotService({
     telemetrySource,
     priorityFeeSource,
+    pendingTransactionSource,
     priceSource,
     repository,
     sseHub,

@@ -20,6 +20,12 @@ export interface EthereumTelemetrySource {
   ): Promise<Unsubscribe>
 }
 
+export interface PendingTransactionSource {
+  subscribeToPendingTransactions(
+    listener: (hashes: readonly `0x${string}`[]) => void,
+  ): Promise<Unsubscribe>
+}
+
 export type EthUsdQuote = Readonly<{
   price: number
   updatedAt: Date

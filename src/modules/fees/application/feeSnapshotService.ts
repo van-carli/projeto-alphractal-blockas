@@ -3,6 +3,7 @@ import type {
   EthereumBlockTelemetry,
   EthUsdPriceSource,
   EthUsdQuote,
+  PendingTransactionSource,
   PriorityFeeSource,
   SnapshotRepository,
   Clock,
@@ -24,6 +25,7 @@ export type OperationDefinition = Readonly<{
 export type FeeSnapshotServiceOptions = Readonly<{
   telemetrySource: EthereumTelemetrySource;
   priorityFeeSource: PriorityFeeSource;
+  pendingTransactionSource: PendingTransactionSource;
   priceSource: EthUsdPriceSource;
   repository: SnapshotRepository;
   sseHub: SseHub;
@@ -43,6 +45,7 @@ export class FeeSnapshotService {
   private lastBlockAt: string | null = null;
   private lastPriceQuote: EthUsdQuote | null = null;
   private priceAvailable = false;
+  private pendingObservations: Array<{ observedAtMs: number; count: number }> = [];
 
   constructor(opts: FeeSnapshotServiceOptions) {
     this.opts = opts;
@@ -53,14 +56,36 @@ export class FeeSnapshotService {
       throw new Error("FeeSnapshotService já está rodando");
     }
 
-    this.unsubscribe = await this.opts.telemetrySource.subscribeToBlocks(
-      async (block) => {
-        await this.handleBlock(block);
-      },
-      (connected) => {
-        this.rpcConnected = connected;
-      },
-    );
+    let stopPendingTransactions: Unsubscribe = () => {};
+    try {
+      stopPendingTransactions =
+        await this.opts.pendingTransactionSource.subscribeToPendingTransactions(
+          (hashes) => this.recordPendingTransactions(hashes.length)
+        );
+    } catch (error) {
+      logger.warn("[pipeline] transações pendentes indisponíveis", {
+        error: error instanceof Error ? error.message : "desconhecido",
+      });
+    }
+
+    try {
+      const stopBlocks = await this.opts.telemetrySource.subscribeToBlocks(
+        async (block) => {
+          await this.handleBlock(block);
+        },
+        (connected) => {
+          this.rpcConnected = connected;
+        },
+      );
+
+      this.unsubscribe = async () => {
+        await stopBlocks();
+        await stopPendingTransactions();
+      };
+    } catch (error) {
+      await stopPendingTransactions();
+      throw error;
+    }
 
     this.rpcConnected = true;
     logger.info("[pipeline] inscrito em blocos");
@@ -131,7 +156,7 @@ export class FeeSnapshotService {
         ethUsd: priceQuote.price,
         priceUpdatedAt: priceQuote.updatedAt.toISOString(),
         priceStatus: this.isPriceStale(priceQuote) ? "stale" : "fresh",
-        pendingTransactionsPerSecond: null,
+        pendingTransactionsPerSecond: this.getPendingTransactionsPerSecond(),
         congestionLevel: calculateCongestion(gasUsedRatio),
         estimatedCosts,
       };
@@ -161,5 +186,30 @@ export class FeeSnapshotService {
   private getPriceStatus(): "fresh" | "stale" | "unavailable" {
     if (!this.priceAvailable || !this.lastPriceQuote) return "unavailable";
     return this.isPriceStale(this.lastPriceQuote) ? "stale" : "fresh";
+  }
+
+  private recordPendingTransactions(count: number): void {
+    this.prunePendingObservations();
+    if (count > 0) {
+      this.pendingObservations.push({
+        observedAtMs: this.opts.clock.now().getTime(),
+        count,
+      });
+    }
+  }
+
+  private getPendingTransactionsPerSecond(): number {
+    this.prunePendingObservations();
+    return this.pendingObservations.reduce(
+      (total, observation) => total + observation.count,
+      0
+    );
+  }
+
+  private prunePendingObservations(): void {
+    const cutoff = this.opts.clock.now().getTime() - 1_000;
+    this.pendingObservations = this.pendingObservations.filter(
+      (observation) => observation.observedAtMs > cutoff
+    );
   }
 }

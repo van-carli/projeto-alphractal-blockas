@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { FeeSnapshotService } from "./feeSnapshotService";
 import { FakeTelemetrySource } from "@/server/rpc/fakeTelemetrySource";
 import { FakePriorityFeeSource } from "@/server/rpc/fakePriorityFeeSource";
+import { FakePendingTransactionSource } from "@/server/rpc/fakePendingTransactionSource";
 import { FakeEthUsdPriceSource } from "@/server/price/fakeEthUsdPriceSource";
 import { InMemorySnapshotRepository } from "../domain/snapshotRepository";
 import { SseHub } from "@/server/sse/sseHub";
@@ -27,6 +28,7 @@ function createService() {
     standard: 2,
     fast: 5,
   });
+  const pendingTransactions = new FakePendingTransactionSource();
   const clock = new FakeClock(new Date("2026-08-24T10:00:00.000Z"));
   const price = new FakeEthUsdPriceSource({
     price: 3000,
@@ -38,6 +40,7 @@ function createService() {
   const service = new FeeSnapshotService({
     telemetrySource: telemetry,
     priorityFeeSource: priorityFee,
+    pendingTransactionSource: pendingTransactions,
     priceSource: price,
     repository,
     sseHub,
@@ -46,7 +49,16 @@ function createService() {
     operations: [{ operation: "ETH transfer", gasUnits: 21000 }],
   });
 
-  return { service, telemetry, priorityFee, price, repository, sseHub, clock };
+  return {
+    service,
+    telemetry,
+    priorityFee,
+    pendingTransactions,
+    price,
+    repository,
+    sseHub,
+    clock,
+  };
 }
 
 describe("FeeSnapshotService", () => {
@@ -121,6 +133,26 @@ describe("FeeSnapshotService", () => {
       status: "healthy",
       rpcConnected: true,
     });
+  });
+
+  it("inclui a taxa observada de transações pendentes no snapshot", async () => {
+    const { service, telemetry, pendingTransactions, repository, clock } =
+      createService();
+    await service.start();
+
+    pendingTransactions.emit([
+      `0x${"1".repeat(64)}`,
+      `0x${"2".repeat(64)}`,
+      `0x${"3".repeat(64)}`,
+    ]);
+    await telemetry.emitBlock(makeBlock(100n));
+
+    expect((await repository.getLatest(1))?.pendingTransactionsPerSecond).toBe(3);
+
+    clock.advance(1_001);
+    await telemetry.emitBlock(makeBlock(101n));
+
+    expect((await repository.getLatest(1))?.pendingTransactionsPerSecond).toBe(0);
   });
 
   it("não quebra se o processamento de um bloco falhar", async () => {
