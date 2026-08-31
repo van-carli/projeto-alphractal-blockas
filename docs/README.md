@@ -1,46 +1,20 @@
 # Documentação do projeto
 
-Esta pasta registra a arquitetura do protótipo de monitoramento em tempo real de
-taxas da rede Ethereum para a área *Fees* da Alphractal.
-
-O escopo foi derivado do
-[TAP do projeto](https://github.com/InteliBlockchain-IBC/projeto-alphractal/blob/main/docs/TAP-Alphractal.pdf)
-e das decisões técnicas tomadas para manter o MVP simples, demonstrável e
-preparado para evolução.
-
-## Documentos
-
-- [Arquitetura](arquitetura.md): módulos, interfaces, fluxo de dados, endpoints,
-  persistência, bibliotecas, atualização do dashboard e implantação.
+O Blockas monitora taxas da rede Ethereum e entrega ao dashboard dados em tempo
+real, sem banco de dados e sem autenticação de usuários.
 
 ## Decisões principais
 
-1. O MVP será um monólito modular em Next.js com App Router e TypeScript.
-2. A aplicação será executada em uma única instância Node.js persistente.
-3. Haverá uma única conexão WebSocket JSON-RPC com o provedor Ethereum por
-   instância.
-4. A cotação ETH/USD será consultada por HTTP, inicialmente a cada 30 segundos.
-5. O servidor entregará atualizações ao navegador por SSE (*Server-Sent Events*).
-6. O frontend carregará o estado inicial por HTTP e receberá as atualizações por
-   SSE.
-7. O TanStack Query armazenará o estado remoto no navegador; eventos completos
-   usarão `setQueryData`, evitando uma segunda requisição a cada atualização.
-8. O PostgreSQL persistirá snapshots e histórico em uma única tabela, sem
-   autenticação de usuários na aplicação.
-9. Não serão usados Socket.IO, Express, Axios, Redux, MongoDB, Redis, ORM ou
-   filas enquanto os requisitos não justificarem essas dependências.
-10. As atividades serão acompanhadas exclusivamente pelo Kanban do projeto.
+1. Monólito modular em Next.js, TypeScript e App Router.
+2. Uma instância Node.js persistente e um cliente Viem WebSocket compartilhado.
+3. Blocos e hashes de transações pendentes observados pelo servidor.
+4. Cotação ETH/USD consultada por HTTP e mantida em cache.
+5. Snapshot atual e histórico circular armazenados em memória.
+6. Estado inicial carregado por HTTP e atualizações entregues por SSE.
+7. Contratos compartilhados e validados com Zod.
+8. Testes usam adapters determinísticos, sem depender da rede pública.
 
-## Atualização em tempo real
+## Documento
 
-O dashboard será atualizado em tempo real:
-
-- blocos: assim que o provedor RPC emitir um novo cabeçalho, normalmente no
-  ritmo de produção de blocos da Ethereum;
-- mempool: métricas agregadas no servidor e publicadas no máximo uma vez por
-  segundo;
-- ETH/USD: atualização por HTTP a cada 30 segundos;
-- saúde das conexões: atualização quando o estado mudar.
-
-O acompanhamento das entregas, responsáveis e prioridades permanece no Kanban;
-não há um documento separado de planejamento no repositório.
+- [Arquitetura](arquitetura.md): fluxo, componentes, contratos, endpoints,
+  resiliência, integração do frontend e operação.

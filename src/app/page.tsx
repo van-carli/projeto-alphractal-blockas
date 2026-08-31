@@ -40,7 +40,7 @@ export default function Home() {
         </h1>
         <p className="mt-7 max-w-2xl text-base leading-7 text-slate-400 sm:text-lg">
           O projeto está preparado para receber ingestão via WebSocket, histórico
-          PostgreSQL e atualização do dashboard por SSE.
+          estado em memória e atualização do dashboard por SSE.
         </p>
 
         <div className="mt-14 grid gap-4 md:grid-cols-3">
