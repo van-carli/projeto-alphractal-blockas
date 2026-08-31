@@ -17,6 +17,7 @@ import {
 import type { FeesStreamConnectionState } from './connectionState'
 
 const DEFAULT_STREAM_URL = '/api/fees/stream'
+const DEFAULT_DEGRADED_THRESHOLD_MS = 5_000
 const DEFAULT_OFFLINE_THRESHOLD_MS = 15_000
 const MAX_HISTORY_LENGTH = 100
 
@@ -26,6 +27,7 @@ export type FeesStreamControllerOptions = Readonly<{
   queryClient: QueryClient
   url?: string
   createSource?: FeesStreamSourceFactory
+  degradedThresholdMs?: number
   offlineThresholdMs?: number
   now?: () => number
   onStateChange?: (state: FeesStreamConnectionState) => void
@@ -40,6 +42,7 @@ export class FeesStreamController {
   private readonly queryClient: QueryClient
   private readonly url: string
   private readonly createSource: FeesStreamSourceFactory
+  private readonly degradedThresholdMs: number
   private readonly offlineThresholdMs: number
   private readonly now: () => number
   private readonly onStateChange?: (state: FeesStreamConnectionState) => void
@@ -53,6 +56,7 @@ export class FeesStreamController {
   private lastSequence: number | null = null
   private lastHealthPayload: string | null = null
   private reconnecting = false
+  private degradedTimer: ReturnType<typeof setTimeout> | null = null
   private offlineTimer: ReturnType<typeof setTimeout> | null = null
 
   private readonly handleOpen = () => this.setOpenState()
@@ -66,6 +70,8 @@ export class FeesStreamController {
     this.queryClient = options.queryClient
     this.url = options.url ?? DEFAULT_STREAM_URL
     this.createSource = options.createSource ?? createBrowserEventSource
+    this.degradedThresholdMs =
+      options.degradedThresholdMs ?? DEFAULT_DEGRADED_THRESHOLD_MS
     this.offlineThresholdMs =
       options.offlineThresholdMs ?? DEFAULT_OFFLINE_THRESHOLD_MS
     this.now = options.now ?? (() => Date.now())
@@ -90,7 +96,7 @@ export class FeesStreamController {
   }
 
   disconnect(): void {
-    this.clearOfflineTimer()
+    this.clearTimers()
 
     if (this.source) {
       this.source.removeEventListener('open', this.handleOpen)
@@ -105,7 +111,7 @@ export class FeesStreamController {
   private setOpenState(): void {
     const wasReconnecting = this.reconnecting
     this.reconnecting = false
-    this.clearOfflineTimer()
+    this.clearTimers()
     this.setState('connected')
 
     if (wasReconnecting) {
@@ -122,10 +128,21 @@ export class FeesStreamController {
       this.setState('reconectando')
     }
 
-    if (this.reconnecting && !this.offlineTimer) {
+    if (!this.reconnecting) return
+
+    if (!this.degradedTimer) {
+      this.degradedTimer = setTimeout(() => {
+        this.degradedTimer = null
+        if (this.state === 'reconectando') {
+          this.setState('degraded')
+        }
+      }, this.degradedThresholdMs)
+    }
+
+    if (!this.offlineTimer) {
       this.offlineTimer = setTimeout(() => {
         this.offlineTimer = null
-        if (this.state === 'reconectando') {
+        if (this.state === 'reconectando' || this.state === 'degraded') {
           this.setState('offline')
         }
       }, this.offlineThresholdMs)
@@ -205,7 +222,11 @@ export class FeesStreamController {
     this.onStateChange?.(state)
   }
 
-  private clearOfflineTimer(): void {
+  private clearTimers(): void {
+    if (this.degradedTimer) {
+      clearTimeout(this.degradedTimer)
+      this.degradedTimer = null
+    }
     if (this.offlineTimer) {
       clearTimeout(this.offlineTimer)
       this.offlineTimer = null

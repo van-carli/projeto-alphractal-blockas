@@ -196,14 +196,15 @@ describe('FeesStreamController', () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: feesQueryKeys.all })
   })
 
-  it('fica offline após o stream permanecer caído além do limiar configurado', () => {
+  it('fica degraded quando o stream continua caído além do limiar de degradação', () => {
     vi.useFakeTimers()
     const states: string[] = []
     const queryClient = new QueryClient()
     let source: FakeEventSource | undefined
     const controller = new FeesStreamController({
       queryClient,
-      offlineThresholdMs: 5_000,
+      degradedThresholdMs: 5_000,
+      offlineThresholdMs: 15_000,
       createSource: (url) => {
         source = new FakeEventSource(url)
         return source
@@ -216,8 +217,60 @@ describe('FeesStreamController', () => {
     source!.emitError()
     vi.advanceTimersByTime(5_000)
 
-    expect(states).toEqual(['connected', 'reconectando', 'offline'])
+    expect(states).toEqual(['connected', 'reconectando', 'degraded'])
+    expect(controller.getState()).toBe('degraded')
+  })
+
+  it('fica offline após o stream permanecer caído além do limiar de offline', () => {
+    vi.useFakeTimers()
+    const states: string[] = []
+    const queryClient = new QueryClient()
+    let source: FakeEventSource | undefined
+    const controller = new FeesStreamController({
+      queryClient,
+      degradedThresholdMs: 5_000,
+      offlineThresholdMs: 15_000,
+      createSource: (url) => {
+        source = new FakeEventSource(url)
+        return source
+      },
+      onStateChange: (state) => states.push(state),
+    })
+    controller.connect()
+
+    source!.emitOpen()
+    source!.emitError()
+    vi.advanceTimersByTime(15_000)
+
+    expect(states).toEqual(['connected', 'reconectando', 'degraded', 'offline'])
     expect(controller.getState()).toBe('offline')
+  })
+
+  it('volta para connected e reconcilia o cache mesmo depois de ficar degraded', () => {
+    vi.useFakeTimers()
+    const queryClient = new QueryClient()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    let source: FakeEventSource | undefined
+    const controller = new FeesStreamController({
+      queryClient,
+      degradedThresholdMs: 5_000,
+      offlineThresholdMs: 15_000,
+      createSource: (url) => {
+        source = new FakeEventSource(url)
+        return source
+      },
+    })
+    controller.connect()
+
+    source!.emitOpen()
+    source!.emitError()
+    vi.advanceTimersByTime(5_000)
+    expect(controller.getState()).toBe('degraded')
+
+    source!.emitOpen()
+
+    expect(controller.getState()).toBe('connected')
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: feesQueryKeys.all })
   })
 
   it('aceita o snapshot de reabertura mesmo com sequence igual ao último recebido antes da queda', () => {
