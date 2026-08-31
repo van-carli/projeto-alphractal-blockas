@@ -82,9 +82,14 @@ export async function startApplicationRuntime(): Promise<ServerRuntimeStop> {
   currentRuntime = { repository, sseHub, feeService, chainId: CHAIN_ID };
 
   return async () => {
-    await stopPipeline();
-    sseHub.close();
-    currentRuntime = null;
-    logger.info("[runtime] pipeline de telemetria encerrado");
+    try {
+      await stopPipeline();
+      const rpcClient = await ethereumClient.transport.getRpcClient();
+      rpcClient.close();
+    } finally {
+      sseHub.close();
+      currentRuntime = null;
+      logger.info("[runtime] pipeline de telemetria encerrado");
+    }
   };
 }
