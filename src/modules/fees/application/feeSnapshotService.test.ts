@@ -61,7 +61,7 @@ describe("FeeSnapshotService", () => {
     expect(latest!.blockNumber).toBe("100");
     expect(latest!.baseFeeGwei).toBe(10);
     expect(latest!.gasUsedRatio).toBe(0.5);
-    expect(latest!.congestionLevel).toBe("low");
+    expect(latest!.congestionLevel).toBe("normal");
     expect(latest!.priorityFeeGwei).toEqual({ slow: 1, standard: 2, fast: 5 });
     expect(latest!.estimatedCosts.length).toBe(1);
     expect(latest!.estimatedCosts[0].operation).toBe("ETH transfer");
@@ -89,12 +89,12 @@ describe("FeeSnapshotService", () => {
     expect(latest!.priceStatus).toBe("stale");
   });
 
-  it("health começa como unhealthy e muda para healthy após start", async () => {
+  it("health começa unhealthy e fica degraded enquanto o preço está indisponível", async () => {
     const { service } = createService();
     expect(service.getHealth().status).toBe("unhealthy");
 
     await service.start();
-    expect(service.getHealth().status).toBe("healthy");
+    expect(service.getHealth().status).toBe("degraded");
     expect(service.getHealth().rpcConnected).toBe(true);
   });
 
