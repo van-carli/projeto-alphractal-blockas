@@ -75,6 +75,8 @@ export class FeeSnapshotService {
           await this.handleBlock(block);
         },
         (connected) => {
+          if (this.rpcConnected === connected) return;
+
           this.rpcConnected = connected;
           this.opts.sseHub.broadcastHealth(this.getHealth());
         },
@@ -215,7 +217,6 @@ export class FeeSnapshotService {
         observedAtMs: this.opts.clock.now().getTime(),
         count,
       });
-      this.opts.sseHub.broadcastHealth(this.getHealth());
     }
   }
 

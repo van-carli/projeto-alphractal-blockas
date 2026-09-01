@@ -99,7 +99,7 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-[#030711] text-slate-100">
+    <main id="dashboard" className="min-h-screen bg-[#030711] text-slate-100">
       <Header
         healthStatus={health.status}
         connectionState={connectionState}
@@ -150,7 +150,10 @@ export default function Home() {
             </section>
 
             {/* KPI strip */}
-            <section className="grid gap-px overflow-hidden rounded-lg border border-[#1D2839] bg-[#1D2839] sm:grid-cols-2 xl:grid-cols-4">
+            <section
+              id="fee-overview"
+              className="scroll-mt-24 grid gap-px overflow-hidden rounded-lg border border-[#1D2839] bg-[#1D2839] sm:grid-cols-2 xl:grid-cols-4"
+            >
               <MetricCard
                 label="Base Fee"
                 value={`${formatNumber(snapshot.baseFeeGwei)} Gwei`}
@@ -180,7 +183,10 @@ export default function Home() {
             {/* Main panels */}
             <div className="mt-6 grid gap-6 lg:grid-cols-2">
               {/* Priority fees */}
-              <section className="rounded-lg border border-[#1D2839] bg-[#0F1729] p-5 md:p-6">
+              <section
+                id="priority-fees"
+                className="scroll-mt-24 rounded-lg border border-[#1D2839] bg-[#0F1729] p-5 md:p-6"
+              >
                 <SectionTitle
                   title="Priority Fees"
                   description="Estimativa por velocidade da transação."
@@ -209,7 +215,10 @@ export default function Home() {
               </section>
 
               {/* System health */}
-              <section className="rounded-lg border border-[#1D2839] bg-[#0F1729] p-5 md:p-6">
+              <section
+                id="system-health"
+                className="scroll-mt-24 rounded-lg border border-[#1D2839] bg-[#0F1729] p-5 md:p-6"
+              >
                 <SectionTitle
                   title="System Health"
                   description="Estado atual da infraestrutura de telemetria."
@@ -258,7 +267,10 @@ export default function Home() {
             </div>
 
             {/* Estimated costs */}
-            <section className="mt-6 rounded-lg border border-[#1D2839] bg-[#0F1729] p-5 md:p-6">
+            <section
+              id="estimated-costs"
+              className="scroll-mt-24 mt-6 rounded-lg border border-[#1D2839] bg-[#0F1729] p-5 md:p-6"
+            >
               <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
                 <SectionTitle
                   title="Estimated Costs"
@@ -313,7 +325,10 @@ export default function Home() {
             </section>
 
             {/* History */}
-            <section className="mt-6 rounded-lg border border-[#1D2839] bg-[#0F1729] p-5 md:p-6">
+            <section
+              id="fee-history"
+              className="scroll-mt-24 mt-6 rounded-lg border border-[#1D2839] bg-[#0F1729] p-5 md:p-6"
+            >
               <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
                 <SectionTitle
                   title="Fee History"
@@ -421,9 +436,9 @@ function Header({
           </div>
 
           <nav className="hidden h-full items-center gap-1 md:flex">
-            <HeaderTab active>Dashboard</HeaderTab>
-            <HeaderTab>Analytics</HeaderTab>
-            <HeaderTab>History</HeaderTab>
+            <HeaderTab href="#dashboard" active>Dashboard</HeaderTab>
+            <HeaderTab href="#estimated-costs">Analytics</HeaderTab>
+            <HeaderTab href="#fee-history">History</HeaderTab>
           </nav>
         </div>
 
@@ -456,12 +471,12 @@ function Header({
             {healthStatus ?? 'Loading'}
           </div>
 
-          <button
-            type="button"
+          <a
+            href="#system-health"
             className="hidden rounded-lg border border-[#1D2839] bg-[#0F1729] px-3 py-2 text-xs font-medium text-slate-300 transition hover:border-[#2D3D58] hover:text-white lg:block"
           >
-            Settings
-          </button>
+            System Health
+          </a>
         </div>
       </div>
     </header>
@@ -470,14 +485,16 @@ function Header({
 
 function HeaderTab({
   children,
+  href,
   active = false,
 }: {
   children: React.ReactNode
+  href: string
   active?: boolean
 }) {
   return (
-    <button
-      type="button"
+    <a
+      href={href}
       className={`relative flex h-full items-center px-3 text-xs font-medium transition ${
         active
           ? 'text-white'
@@ -489,7 +506,7 @@ function HeaderTab({
       {active && (
         <span className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-blue-500" />
       )}
-    </button>
+    </a>
   )
 }
 
@@ -503,10 +520,10 @@ function Sidebar() {
           </p>
 
           <div className="mt-2 space-y-1">
-            <SidebarItem label="Fee Overview" active />
-            <SidebarItem label="Priority Fees" />
-            <SidebarItem label="Gas Analytics" />
-            <SidebarItem label="Network Health" />
+            <SidebarItem href="#fee-overview" label="Fee Overview" active />
+            <SidebarItem href="#priority-fees" label="Priority Fees" />
+            <SidebarItem href="#fee-history" label="Gas Analytics" />
+            <SidebarItem href="#system-health" label="Network Health" />
           </div>
         </div>
 
@@ -516,8 +533,8 @@ function Sidebar() {
           </p>
 
           <div className="mt-2 space-y-1">
-            <SidebarItem label="Fee History" />
-            <SidebarItem label="Estimated Costs" />
+            <SidebarItem href="#fee-history" label="Fee History" />
+            <SidebarItem href="#estimated-costs" label="Estimated Costs" />
           </div>
         </div>
       </div>
@@ -536,15 +553,17 @@ function Sidebar() {
 }
 
 function SidebarItem({
+  href,
   label,
   active = false,
 }: {
+  href: string
   label: string
   active?: boolean
 }) {
   return (
-    <button
-      type="button"
+    <a
+      href={href}
       className={`flex w-full items-center rounded-md px-3 py-2.5 text-left text-xs font-medium transition ${
         active
           ? 'border border-blue-500/20 bg-blue-500/10 text-blue-300'
@@ -558,7 +577,7 @@ function SidebarItem({
       />
 
       {label}
-    </button>
+    </a>
   )
 }
 

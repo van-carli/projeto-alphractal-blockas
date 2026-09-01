@@ -136,6 +136,27 @@ describe("FeeSnapshotService", () => {
     });
   });
 
+  it("não publica health quando o estado da conexão RPC não mudou", async () => {
+    const { service, telemetry, sseHub } = createService();
+    await service.start();
+
+    const reader = sseHub.connect(null).getReader();
+    await reader.read(); // retry inicial do protocolo SSE
+
+    telemetry.emitConnectionStatus(true);
+
+    const outcome = await Promise.race([
+      reader.read().then(() => "event" as const),
+      new Promise<"no-event">((resolve) =>
+        setTimeout(() => resolve("no-event"), 25)
+      ),
+    ]);
+
+    expect(outcome).toBe("no-event");
+    await reader.cancel();
+    sseHub.close();
+  });
+
   it("inclui a taxa observada de transações pendentes no snapshot", async () => {
     const { service, telemetry, pendingTransactions, repository, clock } =
       createService();
@@ -154,6 +175,27 @@ describe("FeeSnapshotService", () => {
     await telemetry.emitBlock(makeBlock(101n));
 
     expect((await repository.getLatest(1))?.pendingTransactionsPerSecond).toBe(0);
+  });
+
+  it("não publica health quando apenas a amostra de transações pendentes muda", async () => {
+    const { service, pendingTransactions, sseHub } = createService();
+    await service.start();
+
+    const reader = sseHub.connect(null).getReader();
+    await reader.read(); // retry inicial do protocolo SSE
+
+    pendingTransactions.emit([`0x${"1".repeat(64)}`]);
+
+    const outcome = await Promise.race([
+      reader.read().then(() => "event" as const),
+      new Promise<"no-event">((resolve) =>
+        setTimeout(() => resolve("no-event"), 25)
+      ),
+    ]);
+
+    expect(outcome).toBe("no-event");
+    await reader.cancel();
+    sseHub.close();
   });
 
   it("não quebra se o processamento de um bloco falhar", async () => {

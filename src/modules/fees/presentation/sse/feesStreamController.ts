@@ -171,7 +171,16 @@ export class FeesStreamController {
     this.queryClient.setQueryData<FeeSnapshot[]>(
       feesQueryKeys.history(),
       (previous) => {
-        const next = [...(previous ?? []), snapshot]
+        const history = previous ?? []
+        const alreadyStored = history.some(
+          (item) =>
+            item.chainId === snapshot.chainId &&
+            item.blockHash === snapshot.blockHash,
+        )
+
+        if (alreadyStored) return history
+
+        const next = [...history, snapshot]
         return next.length > MAX_HISTORY_LENGTH
           ? next.slice(next.length - MAX_HISTORY_LENGTH)
           : next

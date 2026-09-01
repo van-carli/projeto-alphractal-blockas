@@ -77,6 +77,19 @@ describe('FeesStreamController', () => {
     ])
   })
 
+  it('não duplica no histórico um snapshot já carregado por HTTP', () => {
+    const { queryClient, getSource } = setup()
+    queryClient.setQueryData(feesQueryKeys.snapshot(), feeSnapshotFixture)
+    queryClient.setQueryData(feesQueryKeys.history(), [feeSnapshotFixture])
+    getSource().emitOpen()
+
+    getSource().emitSnapshot(JSON.stringify(feeSnapshotFixture))
+
+    expect(queryClient.getQueryData(feesQueryKeys.history())).toEqual([
+      feeSnapshotFixture,
+    ])
+  })
+
   it('descarta eventos snapshot fora de ordem (sequence antiga)', () => {
     const { queryClient, getSource } = setup()
     getSource().emitOpen()
